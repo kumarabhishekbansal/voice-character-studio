@@ -55,10 +55,7 @@ A localhost web application designed for YouTube voiceover and character dialogu
 Double-click `start_studio.bat` inside `E:\Antigravity projects\voice changer app`.
 
 ### Option 2: Command line
-```bash
-cd "E:\Antigravity projects\voice changer app"
-npm run dev
-```
+
 
 Open your browser at:
 `http://localhost:5173`
