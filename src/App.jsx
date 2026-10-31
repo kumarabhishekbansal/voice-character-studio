@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
+import Footer from './components/Footer';
 import AudioUploader from './components/AudioUploader';
 import AudioAnalysisBadge from './components/AudioAnalysisBadge';
 import WaveformPlayer from './components/WaveformPlayer';
@@ -13,7 +14,7 @@ import { audioEngine } from './engine/AudioEngine';
 import { AudioAnalyzer } from './engine/AudioAnalyzer';
 import { Exporters } from './engine/Exporters';
 import { generateSpeechSample } from './utils/sampleAudio';
-import { DEFAULT_VOICE_SETTINGS, CHARACTER_PRESETS } from './constants/presets';
+import { DEFAULT_VOICE_SETTINGS } from './constants/presets';
 import { CheckCircle, AlertTriangle, Info } from 'lucide-react';
 
 export default function App() {
@@ -29,6 +30,9 @@ export default function App() {
   const [settings, setSettings] = useState(DEFAULT_VOICE_SETTINGS);
   const [activePresetId, setActivePresetId] = useState(null);
 
+  // Mobile Drawer State
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
   // A/B Comparison state
   const [activeAB, setActiveAB] = useState('B');
 
@@ -41,7 +45,7 @@ export default function App() {
 
   // User notifications
   const [toast, setToast] = useState({
-    message: 'Voice Character Studio initialized. Memory-only mode active.',
+    message: 'AbhiVoiceChanger ready. In-memory mode active.',
     type: 'info'
   });
 
@@ -81,12 +85,11 @@ export default function App() {
       setOriginalBuffer(decoded);
       setOriginalAnalysis(analysis);
 
-      // Reset any previous processed buffer to release memory immediately
       setProcessedBuffer(null);
       setProcessedAnalysis(null);
       setActiveAB('A');
 
-      showToast(`Loaded ${analysis.formattedDuration} audio (${analysis.fileSize}) into RAM.`, 'success');
+      showToast(`Loaded ${analysis.formattedDuration} audio into RAM.`, 'success');
     } catch (err) {
       console.error('File load error:', err);
       showToast(err.message || 'Failed to decode audio file.', 'error');
@@ -222,7 +225,7 @@ export default function App() {
       setProcessedBuffer(result);
       setProcessedAnalysis(analysis);
       setActiveAB('B');
-      showToast(`Full recording processed successfully! Ready to export.`, 'success');
+      showToast('Full recording processed successfully! Ready to export.', 'success');
     } catch (err) {
       console.error('Full process error:', err);
       showToast(`Processing error: ${err.message}`, 'error');
@@ -270,10 +273,12 @@ export default function App() {
 
   return (
     <div className="app-container">
-      {/* Left Sidebar */}
+      {/* Left Sidebar / Off-canvas drawer */}
       <Sidebar
         originalDuration={originalBuffer ? originalBuffer.duration : 0}
         isProcessing={isProcessing}
+        isOpen={isMobileMenuOpen}
+        onClose={() => setIsMobileMenuOpen(false)}
       />
 
       {/* Main Studio Viewport */}
@@ -284,9 +289,11 @@ export default function App() {
           onResetSettings={handleResetSettings}
           onClearAudio={handleClearAudio}
           hasAudio={!!originalBuffer}
+          isMobileMenuOpen={isMobileMenuOpen}
+          onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
         />
 
-        <div style={{ padding: '24px 28px', maxWidth: '1240px', width: '100%', margin: '0 auto' }}>
+        <div className="studio-main-container">
           {/* Toast Alert Banner */}
           {toast && (
             <div style={{
@@ -303,17 +310,17 @@ export default function App() {
                   : 'rgba(0, 210, 255, 0.3)'
               }`,
               borderRadius: '8px',
-              padding: '10px 16px',
-              marginBottom: '20px',
+              padding: '10px 14px',
+              marginBottom: '18px',
               display: 'flex',
               alignItems: 'center',
               gap: '10px',
-              fontSize: '0.82rem',
+              fontSize: '0.8rem',
               color: toast.type === 'error' ? '#fb7185' : toast.type === 'success' ? '#34d399' : '#38bdf8'
             }}>
-              {toast.type === 'error' && <AlertTriangle size={16} />}
-              {toast.type === 'success' && <CheckCircle size={16} />}
-              {toast.type === 'info' && <Info size={16} />}
+              {toast.type === 'error' && <AlertTriangle size={16} style={{ flexShrink: 0 }} />}
+              {toast.type === 'success' && <CheckCircle size={16} style={{ flexShrink: 0 }} />}
+              {toast.type === 'info' && <Info size={16} style={{ flexShrink: 0 }} />}
               <span>{toast.message}</span>
             </div>
           )}
@@ -393,6 +400,9 @@ export default function App() {
             isExporting={isExporting}
           />
         </div>
+
+        {/* Professional Footer */}
+        <Footer />
       </main>
     </div>
   );

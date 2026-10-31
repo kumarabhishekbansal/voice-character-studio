@@ -1,15 +1,18 @@
-# Voice Character Studio
+# AbhiVoiceChanger
 
-A localhost web application designed for YouTube voiceover and character dialogue workflows. It allows creators to record or upload voice dialogue and transform it into natural, believable characters (e.g., Narrator, Deep Male, Villain, Female, Cartoon, Old Man, Young Male) using local digital signal processing (DSP) with decoupled pitch/rate and formant preservation.
+A professional web application designed for YouTube video voiceover and character dialogue workflows. It allows creators to record or upload voice dialogue and transform it into natural, believable characters (e.g., Narrator, Deep Male, Villain, Female, Cartoon, Old Man, Young Male) using local digital signal processing (DSP) with decoupled pitch/rate and vocal formant preservation.
+
+**Live Website:** [https://abhivoicechanger.vercel.app](https://abhivoicechanger.vercel.app)
+
+**Made by ABHI BANSAL**
 
 ---
 
 ## 🚀 Key Features
 
-1. **Strictly In-Memory Session (NO STORAGE SYSTEM)**
+1. **Strictly In-Memory Session (Zero Persistent Storage)**
    - **Zero disk footprint**: Audio is never written to disk, IndexedDB, LocalStorage, or persistent caches.
-   - Once downloaded, the user owns the file. Closing or refreshing the tab purges all memory cleanly.
-   - Prevents RAM leaks with automatic buffer cleanup.
+   - 100% in-memory processing. Once downloaded, the user owns the file. Closing or refreshing the tab purges all audio memory cleanly.
 
 2. **Natural Human Voice Quality (Top Priority)**
    - **WSOLA Pitch Shifter**: Pitch changes (-12 to +12 semitones) without altering speaking speed.
@@ -17,9 +20,9 @@ A localhost web application designed for YouTube voiceover and character dialogu
    - **Formant Preservation & Shaping**: Dynamically compensates for vocal tract migration to eliminate "chipmunk" or "monster" artifacts.
 
 3. **Complete Vocal DSP Pipeline**
-   - **Dynamic Noise Reduction Gate**: Soft-knee downward expander that silences background room noise and laptop fan hum between words.
+   - **Dynamic Noise Reduction Gate**: Silences background room noise and laptop fan hum.
    - **Character EQ**: 3-Band musical EQ (Bass at 120Hz, Presence at 3.2kHz, Treble at 7.2kHz).
-   - **De-Esser**: Suppresses harsh sibilant spikes (6–8 kHz) often worsened by pitch changes.
+   - **De-Esser**: Suppresses harsh sibilant spikes (6–8 kHz).
    - **Analog Warmth & Saturation**: WaveShaper with even harmonic generation for broadcast presence.
    - **Vocal Compression**: Smooth dynamic leveling with transparent 12ms attack and soft knee.
    - **Algorithmic Studio Reverb & Dark Delay**: Tailored acoustic ambience without external impulse files.
@@ -35,30 +38,36 @@ A localhost web application designed for YouTube voiceover and character dialogu
    - **Cartoon** (exaggerated animation character)
    - **Robot** (stylized sci-fi reflection)
 
-5. **Fast Preview & Full Processing**
-   - **Fast Preview**: Processes a short 7-second slice in ~150ms for instantaneous feedback while tweaking sliders.
+5. **Fully Responsive Across All Devices**
+   - Optimized for Desktop (1920×1080), Laptop (1366×768), Tablet (768×1024), Mobile (390×844), and Small Mobile (320×568).
+   - Off-canvas drawer menu on tablet & mobile devices.
+   - Dynamic auto-resizing waveform visualizer.
+
+6. **Fast Preview & Full Processing**
+   - **Fast Preview**: Processes a short 7-second slice in under 200ms for instantaneous feedback while tweaking sliders.
    - **Process Full Audio**: Processes the complete dialogue file with live percentage progress tracking.
 
-6. **Instant A/B Comparison**
+7. **Instant A/B Comparison**
    - Toggle instantly between **A &bull; Original Voice** and **B &bull; Processed Voice**.
 
-7. **Multi-Format Export**
+8. **Multi-Format Export**
    - **WAV**: 16-bit Broadcast PCM WAV (lossless, ready for Premiere Pro, DaVinci Resolve, CapCut, VN, Clipchamp).
    - **MP3**: High-bitrate 192kbps MP3 via client-side LAME encoder.
    - Filename format: `${CharacterName}_Processed.wav` / `.mp3`.
 
 ---
 
-## 🛠️ How to Run
+## 🛠️ How to Run Locally
 
 ### Option 1: Double-click batch file
-Double-click `start_studio.bat` inside `E:\Antigravity projects\voice changer app`.
+Double-click `start_studio.bat` inside the project directory.
 
 ### Option 2: Command line
+```bash
+npm run dev
+```
 
-
-Open your browser at:
-`http://localhost:5173`
+Open your browser at `http://localhost:5173`.
 
 ---
 

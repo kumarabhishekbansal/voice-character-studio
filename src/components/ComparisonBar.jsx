@@ -1,5 +1,5 @@
 import React from 'react';
-import { Download, ToggleLeft, ToggleRight, FileAudio, CheckCircle2 } from 'lucide-react';
+import { Download, FileAudio } from 'lucide-react';
 
 export default function ComparisonBar({
   onDownloadWav,
@@ -13,88 +13,59 @@ export default function ComparisonBar({
   const safeName = (characterName || 'Voice').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
 
   return (
-    <div className="studio-card" style={{ marginBottom: '24px', background: 'linear-gradient(180deg, var(--bg-surface) 0%, #111a28 100%)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+    <div className="studio-card comparison-card" style={{ marginBottom: '24px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
         {/* A/B Quick Toggle Switch */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase' }}>
+        <div className="comparison-toggle-group">
+          <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             A/B Audition:
           </span>
-          <div style={{
-            display: 'inline-flex',
-            background: 'var(--bg-dark)',
-            borderRadius: '8px',
-            padding: '3px',
-            border: '1px solid var(--border)'
-          }}>
+          <div className="ab-toggle-container">
             <button
               type="button"
               onClick={() => onToggleAB('A')}
-              style={{
-                background: activeAB === 'A' ? 'var(--bg-surface-elevated)' : 'transparent',
-                color: activeAB === 'A' ? '#00d2ff' : 'var(--text-muted)',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '6px 14px',
-                fontSize: '0.8rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-              }}
+              className={`ab-btn ${activeAB === 'A' ? 'ab-btn-active-a' : ''}`}
             >
-              A &bull; Original Voice
+              A &bull; Original
             </button>
             <button
               type="button"
               onClick={() => onToggleAB('B')}
               disabled={!hasProcessedAudio}
-              style={{
-                background: activeAB === 'B' ? 'var(--bg-surface-elevated)' : 'transparent',
-                color: activeAB === 'B' ? '#34d399' : 'var(--text-muted)',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '6px 14px',
-                fontSize: '0.8rem',
-                fontWeight: 600,
-                cursor: hasProcessedAudio ? 'pointer' : 'not-allowed',
-                opacity: hasProcessedAudio ? 1 : 0.4,
-                transition: 'all 0.15s ease',
-              }}
+              className={`ab-btn ${activeAB === 'B' ? 'ab-btn-active-b' : ''}`}
             >
-              B &bull; Processed Voice
+              B &bull; Processed
             </button>
           </div>
         </div>
 
         {/* Export Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div className="comparison-export-group">
           {/* Download WAV */}
           <button
             type="button"
-            className="btn btn-primary"
+            className="btn btn-primary export-btn"
             onClick={onDownloadWav}
             disabled={!hasProcessedAudio || isExporting}
-            style={{ padding: '8px 18px', fontSize: '0.84rem' }}
             title={`Export 16-bit Broadcast WAV for ${safeName}`}
           >
             <Download size={15} />
-            Download WAV
-            <span style={{ fontSize: '0.7rem', opacity: 0.8, fontFamily: 'var(--font-mono)' }}>
-              ({safeName}_Processed.wav)
+            <span>Download WAV</span>
+            <span className="export-filename-badge">
+              ({safeName}.wav)
             </span>
           </button>
 
           {/* Download MP3 */}
           <button
             type="button"
-            className="btn btn-secondary"
+            className="btn btn-secondary export-btn"
             onClick={onDownloadMp3}
             disabled={!hasProcessedAudio || isExporting}
-            style={{ padding: '8px 16px', fontSize: '0.84rem' }}
             title={`Export 192kbps MP3 for ${safeName}`}
           >
             <FileAudio size={15} color="var(--accent-amber)" />
-            Download MP3
+            <span>Download MP3</span>
           </button>
         </div>
       </div>

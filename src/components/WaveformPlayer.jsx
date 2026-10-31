@@ -12,10 +12,12 @@ export default function WaveformPlayer({
   audioEngine,
   onPlayStateChange,
 }) {
+  const containerRef = useRef(null);
   const canvasRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [volume, setVolume] = useState(1.0);
+  const [canvasDimensions, setCanvasDimensions] = useState({ width: 800, height: 90 });
 
   const sourceNodeRef = useRef(null);
   const gainNodeRef = useRef(null);
@@ -24,6 +26,33 @@ export default function WaveformPlayer({
   const animFrameRef = useRef(null);
 
   const duration = audioBuffer ? audioBuffer.duration : 0;
+
+  // Responsive canvas size tracking via ResizeObserver
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const updateSize = () => {
+      const clientWidth = container.clientWidth || 800;
+      // Subtract padding (approx 16px)
+      const targetWidth = Math.max(260, clientWidth - 24);
+      setCanvasDimensions({
+        width: targetWidth,
+        height: 85,
+      });
+    };
+
+    updateSize();
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateSize();
+    });
+    resizeObserver.observe(container);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
 
   // Clean stop
   const stopAudio = useCallback(() => {
@@ -49,17 +78,14 @@ export default function WaveformPlayer({
     if (!audioBuffer) return;
 
     if (isPlaying) {
-      // Pause
       pauseOffsetRef.current = currentTime;
       stopAudio();
     } else {
-      // Play
       const ctx = audioEngine.getAudioContext();
       if (ctx.state === 'suspended') {
         ctx.resume();
       }
 
-      // If at end, loop to beginning
       let startOffset = pauseOffsetRef.current;
       if (startOffset >= duration - 0.05) {
         startOffset = 0;
@@ -77,7 +103,6 @@ export default function WaveformPlayer({
       gain.connect(ctx.destination);
 
       source.onended = () => {
-        // Natural end of playback
         if (sourceNodeRef.current === source) {
           stopAudio();
           pauseOffsetRef.current = 0;
@@ -92,7 +117,6 @@ export default function WaveformPlayer({
       setIsPlaying(true);
       if (onPlayStateChange) onPlayStateChange(true);
 
-      // Animation loop for playhead
       const updatePlayhead = () => {
         if (!sourceNodeRef.current) return;
         const now = ctx.currentTime - startTimeRef.current;
@@ -121,7 +145,6 @@ export default function WaveformPlayer({
 
     if (isPlaying) {
       stopAudio();
-      // Restart playback at new seek point
       setTimeout(() => {
         togglePlay();
       }, 20);
@@ -142,13 +165,18 @@ export default function WaveformPlayer({
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    const width = canvas.width;
-    const height = canvas.height;
+    const width = canvasDimensions.width;
+    const height = canvasDimensions.height;
+
+    // Set canvas internal resolution to match container
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
 
     ctx.clearRect(0, 0, width, height);
 
     if (!audioBuffer || !waveformPeaks || waveformPeaks.length === 0) {
-      // Draw idle placeholder line
       ctx.strokeStyle = '#233148';
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -158,29 +186,28 @@ export default function WaveformPlayer({
       return;
     }
 
-    const numBars = waveformPeaks.length;
+    const numBars = Math.min(waveformPeaks.length, Math.floor(width / 2.5));
+    const step = waveformPeaks.length / numBars;
     const barWidth = width / numBars;
     const playheadRatio = duration > 0 ? currentTime / duration : 0;
     const playheadX = playheadRatio * width;
 
-    // Draw background bars
     for (let i = 0; i < numBars; i++) {
       const x = i * barWidth;
-      const peak = waveformPeaks[i];
+      const peakIdx = Math.floor(i * step);
+      const peak = waveformPeaks[peakIdx] || 0;
       const barHeight = Math.max(2, peak * (height * 0.88));
       const y = (height - barHeight) / 2;
 
-      // Color based on whether it is before or after playhead
       if (x <= playheadX) {
         ctx.fillStyle = accentColor;
       } else {
-        ctx.fillStyle = '#2a3b54';
+        ctx.fillStyle = '#26354a';
       }
 
       ctx.fillRect(x, y, Math.max(1.5, barWidth - 1), barHeight);
     }
 
-    // Draw playhead vertical line
     if (duration > 0) {
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 2;
@@ -190,11 +217,10 @@ export default function WaveformPlayer({
       ctx.moveTo(playheadX, 0);
       ctx.lineTo(playheadX, height);
       ctx.stroke();
-      ctx.shadowBlur = 0; // reset
+      ctx.shadowBlur = 0;
     }
-  }, [audioBuffer, waveformPeaks, currentTime, duration, accentColor]);
+  }, [audioBuffer, waveformPeaks, currentTime, duration, accentColor, canvasDimensions]);
 
-  // Clean up on unmount or audioBuffer change
   useEffect(() => {
     return () => {
       stopAudio();
@@ -209,47 +235,61 @@ export default function WaveformPlayer({
   };
 
   return (
-    <div className="studio-card" style={{ marginBottom: '16px' }}>
+    <div className="studio-card waveform-card" ref={containerRef} style={{ marginBottom: '16px' }}>
       {/* Header bar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <h4 style={{ fontSize: '0.92rem', fontWeight: 600, color: '#ffffff' }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '8px',
+        marginBottom: '10px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <h4 style={{ fontSize: '0.88rem', fontWeight: 700, color: '#ffffff', letterSpacing: '0.02em' }}>
             {title}
           </h4>
           {badgeText && (
-            <span className={`badge badge-${badgeType}`}>
+            <span className={`badge badge-${badgeType}`} style={{ fontSize: '0.7rem' }}>
               {badgeText}
             </span>
           )}
           {subtitle && (
-            <span style={{ fontSize: '0.74rem', color: 'var(--text-subtle)' }}>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
               {subtitle}
             </span>
           )}
         </div>
 
         {/* Time code */}
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+        <div style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: '0.78rem',
+          color: 'var(--text-muted)',
+          marginLeft: 'auto'
+        }}>
           <span style={{ color: '#ffffff', fontWeight: 600 }}>{formatSecs(currentTime)}</span>
           <span style={{ margin: '0 4px', color: 'var(--text-subtle)' }}>/</span>
           <span>{formatSecs(duration)}</span>
         </div>
       </div>
 
-      {/* Interactive Waveform Canvas */}
+      {/* Interactive Waveform Canvas Container */}
       <div style={{
         background: '#090d16',
         borderRadius: '8px',
         border: '1px solid var(--border)',
         padding: '8px 12px',
         cursor: audioBuffer ? 'pointer' : 'default',
-        position: 'relative'
+        position: 'relative',
+        overflow: 'hidden',
+        width: '100%'
       }}>
         <canvas
           ref={canvasRef}
-          width={800}
-          height={90}
-          style={{ width: '100%', height: '90px', display: 'block' }}
+          width={canvasDimensions.width}
+          height={canvasDimensions.height}
+          style={{ width: '100%', height: '85px', display: 'block' }}
           onClick={handleCanvasClick}
         />
         {!audioBuffer && (
@@ -259,7 +299,7 @@ export default function WaveformPlayer({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: '0.8rem',
+            fontSize: '0.78rem',
             color: 'var(--text-subtle)'
           }}>
             No audio loaded
@@ -267,17 +307,18 @@ export default function WaveformPlayer({
         )}
       </div>
 
-      {/* Controls Bar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '12px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      {/* Responsive Controls Bar */}
+      <div className="waveform-controls">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
             type="button"
             className="btn btn-primary"
             onClick={togglePlay}
             disabled={!audioBuffer}
             style={{
-              padding: '7px 16px',
+              padding: '8px 16px',
               fontSize: '0.82rem',
+              minHeight: '38px',
               background: isPlaying ? 'linear-gradient(135deg, #f59e0b, #d97706)' : undefined
             }}
           >
@@ -294,16 +335,17 @@ export default function WaveformPlayer({
               setCurrentTime(0);
             }}
             disabled={!audioBuffer || currentTime === 0}
-            style={{ padding: '7px 12px' }}
+            style={{ padding: '8px 12px', minHeight: '38px' }}
             title="Rewind to start"
+            aria-label="Rewind to start"
           >
             <RotateCcw size={14} />
           </button>
         </div>
 
         {/* Volume Fader */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '130px' }}>
-          <Volume2 size={15} color="var(--text-subtle)" />
+        <div className="waveform-volume">
+          <Volume2 size={15} color="var(--text-subtle)" style={{ flexShrink: 0 }} />
           <input
             type="range"
             min="0"
@@ -312,10 +354,10 @@ export default function WaveformPlayer({
             value={volume}
             onChange={handleVolumeChange}
             disabled={!audioBuffer}
-            style={{ height: '4px' }}
+            style={{ height: '5px', flex: 1 }}
             title={`Monitor Volume: ${Math.round(volume * 100)}%`}
           />
-          <span style={{ fontSize: '0.72rem', fontFamily: 'var(--font-mono)', color: 'var(--text-subtle)', width: '32px' }}>
+          <span style={{ fontSize: '0.72rem', fontFamily: 'var(--font-mono)', color: 'var(--text-subtle)', width: '32px', textAlign: 'right' }}>
             {Math.round(volume * 100)}%
           </span>
         </div>

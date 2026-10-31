@@ -1,20 +1,20 @@
 import React from 'react';
-import { Sliders, Sparkles, Waves, Shield, Activity, Volume2 } from 'lucide-react';
+import { Sliders, Waves, Shield } from 'lucide-react';
 
 export default function VoiceControls({ settings, onChange, onResetParam }) {
   const update = (key, val) => {
     onChange({ ...settings, [key]: val });
   };
 
-  const renderSlider = (key, label, min, max, step, unit = '', defaultValue = 0, color = 'cyan') => {
+  const renderSlider = (key, label, min, max, step, unit = '', defaultValue = 0) => {
     const val = settings[key] !== undefined ? settings[key] : defaultValue;
     const isNeutral = Math.abs(val - defaultValue) < 0.001;
 
     return (
-      <div style={{ marginBottom: '16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-main)' }}>
+      <div style={{ marginBottom: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 500, color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {label}
             </span>
             {!isNeutral && (
@@ -26,10 +26,12 @@ export default function VoiceControls({ settings, onChange, onResetParam }) {
                   border: 'none',
                   color: 'var(--text-subtle)',
                   cursor: 'pointer',
-                  fontSize: '0.68rem',
-                  padding: '0 2px'
+                  fontSize: '0.72rem',
+                  padding: '2px 4px',
+                  borderRadius: '4px',
                 }}
                 title="Reset to default"
+                aria-label={`Reset ${label} to default`}
               >
                 ↺
               </button>
@@ -37,17 +39,19 @@ export default function VoiceControls({ settings, onChange, onResetParam }) {
           </div>
 
           <span style={{
-            fontSize: '0.78rem',
+            fontSize: '0.76rem',
             fontFamily: 'var(--font-mono)',
             fontWeight: 600,
-            color: isNeutral ? 'var(--text-subtle)' : '#38bdf8'
+            color: isNeutral ? 'var(--text-subtle)' : '#38bdf8',
+            flexShrink: 0,
+            marginLeft: '8px'
           }}>
             {val > 0 && (unit === 'dB' || unit === 'st') ? `+${val}` : val}
             {unit ? ` ${unit}` : ''}
           </span>
         </div>
 
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative', width: '100%', padding: '4px 0' }}>
           <input
             type="range"
             min={min}
@@ -55,6 +59,8 @@ export default function VoiceControls({ settings, onChange, onResetParam }) {
             step={step}
             value={val}
             onChange={(e) => update(key, parseFloat(e.target.value))}
+            style={{ width: '100%' }}
+            aria-label={label}
           />
         </div>
       </div>
@@ -62,16 +68,16 @@ export default function VoiceControls({ settings, onChange, onResetParam }) {
   };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+    <div className="controls-grid" style={{ marginBottom: '20px' }}>
       {/* 1. Basic Pitch & Rate Controls */}
-      <div className="studio-card">
+      <div className="studio-card control-group-card">
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
           <Sliders size={16} color="var(--accent-cyan)" />
-          <h4 style={{ fontSize: '0.88rem', fontWeight: 600, color: '#ffffff' }}>
+          <h4 style={{ fontSize: '0.86rem', fontWeight: 700, color: '#ffffff' }}>
             Basic Controls
           </h4>
-          <span className="badge badge-cyan" style={{ marginLeft: 'auto', fontSize: '0.65rem' }}>
-            Pitch / Tempo Decoupled
+          <span className="badge badge-cyan" style={{ marginLeft: 'auto', fontSize: '0.64rem' }}>
+            Pitch / Speed Decoupled
           </span>
         </div>
 
@@ -79,19 +85,19 @@ export default function VoiceControls({ settings, onChange, onResetParam }) {
         {renderSlider('rate', 'Speaking Rate (Tempo)', 0.75, 1.25, 0.01, 'x', 1.0)}
         {renderSlider('volume', 'Master Volume', 0, 150, 5, '%', 100)}
 
-        <p style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', marginTop: '8px', lineHeight: '1.4' }}>
-          Changing pitch will preserve speaking speed naturally without chipmunk acceleration.
+        <p style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', marginTop: '6px', lineHeight: '1.4' }}>
+          Pitch shifts without altering speaking speed.
         </p>
       </div>
 
       {/* 2. Character Formants & EQ */}
-      <div className="studio-card">
+      <div className="studio-card control-group-card">
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
           <Waves size={16} color="var(--accent-amber)" />
-          <h4 style={{ fontSize: '0.88rem', fontWeight: 600, color: '#ffffff' }}>
+          <h4 style={{ fontSize: '0.86rem', fontWeight: 700, color: '#ffffff' }}>
             Character & Formants
           </h4>
-          <span className="badge badge-amber" style={{ marginLeft: 'auto', fontSize: '0.65rem' }}>
+          <span className="badge badge-amber" style={{ marginLeft: 'auto', fontSize: '0.64rem' }}>
             Vocal Tract Geometry
           </span>
         </div>
@@ -104,13 +110,13 @@ export default function VoiceControls({ settings, onChange, onResetParam }) {
       </div>
 
       {/* 3. Dynamics & Acoustic Space */}
-      <div className="studio-card">
+      <div className="studio-card control-group-card">
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
           <Shield size={16} color="#34d399" />
-          <h4 style={{ fontSize: '0.88rem', fontWeight: 600, color: '#ffffff' }}>
+          <h4 style={{ fontSize: '0.86rem', fontWeight: 700, color: '#ffffff' }}>
             Dynamics & Effects
           </h4>
-          <span className="badge badge-emerald" style={{ marginLeft: 'auto', fontSize: '0.65rem' }}>
+          <span className="badge badge-emerald" style={{ marginLeft: 'auto', fontSize: '0.64rem' }}>
             Natural Acoustics
           </span>
         </div>

@@ -1,38 +1,60 @@
 import React from 'react';
-import { RotateCcw, Trash2, Tag, Wand2 } from 'lucide-react';
+import { RotateCcw, Trash2, Tag, Menu, X, Sparkles } from 'lucide-react';
 
-export default function Header({ characterName, onCharacterNameChange, onResetSettings, onClearAudio, hasAudio }) {
+export default function Header({
+  characterName,
+  onCharacterNameChange,
+  onResetSettings,
+  onClearAudio,
+  hasAudio,
+  isMobileMenuOpen,
+  onToggleMobileMenu,
+}) {
   return (
     <header className="top-header">
-      {/* Title & Character Name Input */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flex: 1 }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#ffffff', letterSpacing: '-0.01em' }}>
-              Voice Character Studio
-            </h2>
-            <span className="badge badge-cyan">YouTube Workflow</span>
+      <div className="header-inner">
+        {/* Left Side: Mobile Menu Button & Brand */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button
+            type="button"
+            className="mobile-menu-btn"
+            onClick={onToggleMobileMenu}
+            aria-label="Toggle navigation drawer"
+            title="Open workflow sidebar"
+          >
+            {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <h1 style={{
+                fontSize: '1.2rem',
+                fontWeight: 800,
+                color: '#ffffff',
+                letterSpacing: '-0.02em',
+                lineHeight: 1.2
+              }}>
+                Abhi<span style={{ color: 'var(--accent-cyan)' }}>VoiceChanger</span>
+              </h1>
+              <span className="badge badge-cyan header-badge">YouTube Studio</span>
+            </div>
+            <span className="header-subtitle">
+              Natural Human Voice & Character Transformation
+            </span>
           </div>
-          <span style={{ fontSize: '0.74rem', color: 'var(--text-subtle)' }}>
-            High-Naturalness Formant-Preserving Audio Transformer
-          </span>
         </div>
 
-        {/* Character Name Input Field */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          background: 'var(--bg-surface-elevated)',
-          padding: '6px 14px',
-          borderRadius: '8px',
-          border: '1px solid var(--border-light)',
-          maxWidth: '320px',
-          width: '100%'
-        }}>
-          <Tag size={15} color="var(--accent-cyan)" />
-          <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-            <label style={{ fontSize: '0.66rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 600 }}>
+        {/* Center: Character Name Input */}
+        <div className="header-character-box">
+          <Tag size={15} color="var(--accent-cyan)" style={{ flexShrink: 0 }} />
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+            <label style={{
+              fontSize: '0.64rem',
+              color: 'var(--text-subtle)',
+              textTransform: 'uppercase',
+              fontWeight: 700,
+              letterSpacing: '0.04em'
+            }}>
               Current Character Name
             </label>
             <input
@@ -45,39 +67,39 @@ export default function Header({ characterName, onCharacterNameChange, onResetSe
                 border: 'none',
                 outline: 'none',
                 color: 'var(--text-main)',
-                fontSize: '0.85rem',
+                fontSize: '0.86rem',
                 fontWeight: 600,
                 width: '100%',
-                padding: '1px 0'
+                padding: '2px 0',
+                textOverflow: 'ellipsis'
               }}
             />
           </div>
         </div>
-      </div>
 
-      {/* Action Buttons */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <button
-          onClick={onResetSettings}
-          className="btn btn-secondary"
-          title="Restore natural neutral settings"
-          style={{ fontSize: '0.8rem', padding: '7px 14px' }}
-        >
-          <RotateCcw size={14} />
-          Reset Settings
-        </button>
-
-        {hasAudio && (
+        {/* Right Side: Quick Action Buttons */}
+        <div className="header-actions">
           <button
-            onClick={onClearAudio}
-            className="btn btn-secondary"
-            title="Clear active audio from memory"
-            style={{ fontSize: '0.8rem', padding: '7px 14px', color: 'var(--accent-rose)' }}
+            onClick={onResetSettings}
+            className="btn btn-secondary header-btn"
+            title="Restore natural neutral settings"
           >
-            <Trash2 size={14} />
-            Clear Audio
+            <RotateCcw size={14} />
+            <span className="btn-label">Reset Settings</span>
           </button>
-        )}
+
+          {hasAudio && (
+            <button
+              onClick={onClearAudio}
+              className="btn btn-secondary header-btn"
+              title="Clear active audio from memory"
+              style={{ color: 'var(--accent-rose)' }}
+            >
+              <Trash2 size={14} />
+              <span className="btn-label">Clear Audio</span>
+            </button>
+          )}
+        </div>
       </div>
     </header>
   );

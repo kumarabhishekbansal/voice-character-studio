@@ -1,8 +1,9 @@
 @echo off
-title Voice Character Studio
+title AbhiVoiceChanger
 cd /d "%~dp0"
 echo ===================================================
-echo        VOICE CHARACTER STUDIO (LOCALHOST)
+echo               ABHIVOICECHANGER (LOCALHOST)
+echo              Made by ABHI BANSAL
 echo ===================================================
 echo Starting localhost studio server...
 echo URL: http://localhost:5173

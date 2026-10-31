@@ -41,7 +41,6 @@ export default function AudioUploader({ onFileLoaded, onLoadDemoSpeech, isProces
       setErrorMessage('Please upload a valid audio file (.wav, .mp3, .m4a, .ogg, .flac).');
       return;
     }
-    // Check file size (e.g. max 150MB to protect memory)
     if (file.size > 150 * 1024 * 1024) {
       setErrorMessage('File exceeds 150MB limit. To ensure low RAM consumption, please upload a shorter clip.');
       return;
@@ -114,6 +113,7 @@ export default function AudioUploader({ onFileLoaded, onLoadDemoSpeech, isProces
       )}
 
       <div
+        className="uploader-dropzone"
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -121,7 +121,6 @@ export default function AudioUploader({ onFileLoaded, onLoadDemoSpeech, isProces
           border: isDragging ? '2px dashed var(--accent-cyan)' : '2px dashed var(--border-light)',
           background: isDragging ? 'rgba(0, 210, 255, 0.05)' : 'var(--bg-dark)',
           borderRadius: '10px',
-          padding: '36px 20px',
           textAlign: 'center',
           cursor: 'pointer',
           transition: 'all 0.2s ease',
@@ -137,30 +136,30 @@ export default function AudioUploader({ onFileLoaded, onLoadDemoSpeech, isProces
         />
 
         <div style={{
-          width: '54px',
-          height: '54px',
+          width: '50px',
+          height: '50px',
           borderRadius: '50%',
           background: 'var(--bg-surface-elevated)',
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'center',
-          marginBottom: '14px',
+          marginBottom: '12px',
           border: '1px solid var(--border-light)'
         }}>
-          <Upload size={24} color="var(--accent-cyan)" />
+          <Upload size={22} color="var(--accent-cyan)" />
         </div>
 
-        <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '6px' }}>
+        <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '6px' }}>
           Drag & Drop your Voice Recording here
         </h3>
-        <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '18px' }}>
+        <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
           Supports WAV, MP3, M4A, FLAC, OGG &bull; Kept 100% in local memory
         </p>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
+        <div className="uploader-actions" onClick={(e) => e.stopPropagation()}>
           <button
             type="button"
-            className="btn btn-primary"
+            className="btn btn-primary uploader-btn"
             onClick={() => fileInputRef.current.click()}
             disabled={isProcessing || isRecording}
           >
@@ -168,11 +167,10 @@ export default function AudioUploader({ onFileLoaded, onLoadDemoSpeech, isProces
             Choose Audio File
           </button>
 
-          {/* Record Directly */}
           {!isRecording ? (
             <button
               type="button"
-              className="btn btn-secondary"
+              className="btn btn-secondary uploader-btn"
               onClick={startRecording}
               disabled={isProcessing}
             >
@@ -182,7 +180,7 @@ export default function AudioUploader({ onFileLoaded, onLoadDemoSpeech, isProces
           ) : (
             <button
               type="button"
-              className="btn btn-secondary"
+              className="btn btn-secondary uploader-btn"
               onClick={stopRecording}
               style={{ borderColor: '#f43f5e', color: '#f43f5e' }}
             >
@@ -197,10 +195,9 @@ export default function AudioUploader({ onFileLoaded, onLoadDemoSpeech, isProces
             </button>
           )}
 
-          {/* Instant Demo Speech */}
           <button
             type="button"
-            className="btn btn-secondary"
+            className="btn btn-secondary uploader-btn"
             onClick={onLoadDemoSpeech}
             disabled={isProcessing || isRecording}
             title="Generate procedural speech for rapid 1-click preset testing"

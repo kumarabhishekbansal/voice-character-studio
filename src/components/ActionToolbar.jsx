@@ -12,20 +12,24 @@ export default function ActionToolbar({
   hasProcessedAudio
 }) {
   return (
-    <div className="studio-card" style={{ marginBottom: '20px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {/* Fast Preview Button (Processes short 7s slice) */}
+    <div className="studio-card action-toolbar-card" style={{ marginBottom: '20px' }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '12px'
+      }}>
+        <div className="action-buttons-group">
+          {/* Fast Preview Button */}
           <button
             type="button"
-            className="btn btn-secondary"
+            className="btn btn-secondary action-btn"
             onClick={onPreview}
             disabled={!hasAudio || isProcessing}
             style={{
               borderColor: 'var(--accent-amber)',
               color: 'var(--accent-amber)',
-              padding: '10px 20px',
-              fontSize: '0.88rem'
             }}
             title="Rapidly renders the first 7 seconds in under 200ms"
           >
@@ -40,14 +44,10 @@ export default function ActionToolbar({
           {/* Process Full Audio Button */}
           <button
             type="button"
-            className="btn btn-primary"
+            className="btn btn-primary action-btn"
             onClick={onProcessFull}
             disabled={!hasAudio || isProcessing}
-            style={{
-              padding: '10px 24px',
-              fontSize: '0.9rem',
-              fontWeight: 600,
-            }}
+            style={{ fontWeight: 700 }}
           >
             {isProcessing && !isPreviewing ? (
               <Loader2 size={17} className="pulse-indicator" />
@@ -60,11 +60,13 @@ export default function ActionToolbar({
 
         {/* Processing Progress Feedback */}
         {isProcessing && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, maxWidth: '380px' }}>
+          <div className="action-progress-wrapper">
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', marginBottom: '4px' }}>
-                <span style={{ color: 'var(--text-muted)' }}>{processingStage}</span>
-                <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-cyan)', fontWeight: 600 }}>
+                <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {processingStage}
+                </span>
+                <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-cyan)', fontWeight: 600, marginLeft: '8px' }}>
                   {processingProgress}%
                 </span>
               </div>
@@ -82,9 +84,16 @@ export default function ActionToolbar({
 
         {/* Quick status notice if ready */}
         {!isProcessing && hasProcessedAudio && (
-          <span style={{ fontSize: '0.76rem', color: '#34d399', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#34d399' }} />
-            Audio processed & ready for comparison or export
+          <span style={{
+            fontSize: '0.74rem',
+            color: '#34d399',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            marginLeft: 'auto'
+          }}>
+            <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#34d399', flexShrink: 0 }} />
+            Ready for audition & export
           </span>
         )}
       </div>

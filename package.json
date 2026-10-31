@@ -1,7 +1,7 @@
 {
-  "name": "voice-character-studio",
+  "name": "abhivoicechanger",
   "version": "1.0.0",
-  "description": "Voice Character Studio for YouTube Video Workflow",
+  "description": "AbhiVoiceChanger for YouTube Video Workflow",
   "type": "module",
   "scripts": {
     "dev": "vite",
