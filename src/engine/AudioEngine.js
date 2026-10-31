@@ -1,13 +1,22 @@
 import { PitchTimeShifter } from './PitchTimeShifter';
 import { VoiceEffectsChain } from './VoiceEffectsChain';
+import { sanitizeAudioSettings, MAX_AUDIO_DURATION_SECONDS } from '../utils/security';
 
 /**
  * Main Audio Processing Controller
- * Coordinates decoding, preview slicing, full processing pipeline, and progress.
+ * Coordinates decoding, preview slicing, full processing pipeline, progress, and concurrency cancellation.
  */
 export class AudioEngine {
   constructor() {
     this.context = null;
+    this.activeJobId = 0;
+  }
+
+  /**
+   * Cancels any in-flight DSP processing job
+   */
+  abortCurrentJob() {
+    this.activeJobId++;
   }
 
   getAudioContext() {
@@ -22,7 +31,7 @@ export class AudioEngine {
   }
 
   /**
-   * Decodes an ArrayBuffer or File into an AudioBuffer
+   * Decodes an ArrayBuffer or File into an AudioBuffer with duration validation
    */
   async decodeAudio(arrayBuffer) {
     const ctx = this.getAudioContext();
@@ -30,8 +39,19 @@ export class AudioEngine {
       // Use clone of arrayBuffer to prevent detachment errors
       const bufferCopy = arrayBuffer.slice(0);
       const audioBuffer = await ctx.decodeAudioData(bufferCopy);
+
+      // Duration security limit check (20 minutes max)
+      if (audioBuffer.duration > MAX_AUDIO_DURATION_SECONDS) {
+        throw new Error(
+          `Audio duration (${Math.round(audioBuffer.duration / 60)} min) exceeds the 20-minute limit. Please use a shorter recording to ensure smooth performance.`
+        );
+      }
+
       return audioBuffer;
     } catch (err) {
+      if (err.message && err.message.includes('20-minute limit')) {
+        throw err;
+      }
       console.error('Audio decode failure:', err);
       throw new Error('Unsupported or corrupted audio file format. Please upload a standard WAV, MP3, M4A, or FLAC file.');
     }
@@ -66,6 +86,12 @@ export class AudioEngine {
    */
   async process(inputBuffer, settings, onProgress = null, isPreview = false) {
     const ctx = this.getAudioContext();
+    const safeSettings = sanitizeAudioSettings(settings);
+
+    // Track active job ID for safe preemption / abort
+    this.activeJobId++;
+    const currentJobId = this.activeJobId;
+    const isCancelled = () => this.activeJobId !== currentJobId;
 
     // Stage 1: Pitch Shifting & Time Stretching (SoundTouch WSOLA)
     if (onProgress) onProgress(10);
@@ -73,10 +99,12 @@ export class AudioEngine {
     const pitchShiftedBuffer = await PitchTimeShifter.processBuffer(
       inputBuffer,
       {
-        pitchSemitones: settings.pitch || 0,
-        rate: settings.rate || 1.0,
+        pitchSemitones: safeSettings.pitch || 0,
+        rate: safeSettings.rate || 1.0,
+        isCancelled,
       },
       (ratio) => {
+        if (isCancelled()) return;
         if (onProgress) {
           // Pitch shifting represents 10% to 70% of total processing time
           const pct = 10 + Math.round(ratio * 60);
@@ -86,10 +114,18 @@ export class AudioEngine {
       ctx
     );
 
+    if (isCancelled()) {
+      throw new Error('Audio processing cancelled.');
+    }
+
     if (onProgress) onProgress(75);
 
     // Stage 2: Vocal Formant Shaping, EQ, Saturation, Compression, Reverb, De-Esser, Gate
-    const processedBuffer = await VoiceEffectsChain.render(pitchShiftedBuffer, settings);
+    const processedBuffer = await VoiceEffectsChain.render(pitchShiftedBuffer, safeSettings);
+
+    if (isCancelled()) {
+      throw new Error('Audio processing cancelled.');
+    }
 
     if (onProgress) onProgress(100);
 

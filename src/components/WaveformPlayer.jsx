@@ -34,8 +34,8 @@ export default function WaveformPlayer({
 
     const updateSize = () => {
       const clientWidth = container.clientWidth || 800;
-      // Subtract padding (approx 16px)
-      const targetWidth = Math.max(260, clientWidth - 24);
+      // Subtract padding while ensuring it never exceeds clientWidth
+      const targetWidth = Math.max(120, Math.floor(clientWidth - 16));
       setCanvasDimensions({
         width: targetWidth,
         height: 85,

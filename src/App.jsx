@@ -15,6 +15,7 @@ import { AudioAnalyzer } from './engine/AudioAnalyzer';
 import { Exporters } from './engine/Exporters';
 import { generateSpeechSample } from './utils/sampleAudio';
 import { DEFAULT_VOICE_SETTINGS } from './constants/presets';
+import { sanitizeFilename } from './utils/security';
 import { CheckCircle, AlertTriangle, Info } from 'lucide-react';
 
 export default function App() {
@@ -76,8 +77,10 @@ export default function App() {
 
   // 1. Handle file upload
   const handleFileLoaded = async (file) => {
+    audioEngine.abortCurrentJob();
     try {
-      showToast(`Loading "${file.name}" into session memory...`, 'info');
+      const safeDisplay = sanitizeFilename(file.name.replace(/\.[^/.]+$/, ''), 'Audio');
+      showToast(`Loading "${safeDisplay}" into session memory...`, 'info');
       const arrayBuffer = await file.arrayBuffer();
       const decoded = await audioEngine.decodeAudio(arrayBuffer);
       const analysis = AudioAnalyzer.analyze(decoded, file);
@@ -122,6 +125,7 @@ export default function App() {
 
   // 3. Clear audio from memory
   const handleClearAudio = () => {
+    audioEngine.abortCurrentJob();
     setOriginalBuffer(null);
     setOriginalAnalysis(null);
     setProcessedBuffer(null);
@@ -142,6 +146,7 @@ export default function App() {
 
   // 5. Reset settings
   const handleResetSettings = () => {
+    audioEngine.abortCurrentJob();
     setSettings(DEFAULT_VOICE_SETTINGS);
     setActivePresetId(null);
     showToast('Settings restored to natural neutral defaults.', 'info');
@@ -173,8 +178,9 @@ export default function App() {
         true
       );
 
+      const safeCharacterName = sanitizeFilename(characterName, 'Character');
       const analysis = AudioAnalyzer.analyze(result, {
-        name: `${characterName}_Preview.wav`,
+        name: `${safeCharacterName}_Preview.wav`,
         type: 'audio/wav',
         size: result.length * result.numberOfChannels * 4,
       });
@@ -184,8 +190,12 @@ export default function App() {
       setActiveAB('B');
       showToast('Preview processed! Playing transformed voice.', 'success');
     } catch (err) {
-      console.error('Preview error:', err);
-      showToast(`Processing error: ${err.message}`, 'error');
+      if (err.message && err.message.includes('cancelled')) {
+        showToast('Processing cancelled.', 'info');
+      } else {
+        console.error('Preview error:', err);
+        showToast(`Processing error: ${err.message}`, 'error');
+      }
     } finally {
       setIsProcessing(false);
       setIsPreviewing(false);
@@ -216,8 +226,9 @@ export default function App() {
         false
       );
 
+      const safeCharacterName = sanitizeFilename(characterName, 'Character');
       const analysis = AudioAnalyzer.analyze(result, {
-        name: `${characterName}_Processed.wav`,
+        name: `${safeCharacterName}_Processed.wav`,
         type: 'audio/wav',
         size: result.length * result.numberOfChannels * 4,
       });
@@ -227,8 +238,12 @@ export default function App() {
       setActiveAB('B');
       showToast('Full recording processed successfully! Ready to export.', 'success');
     } catch (err) {
-      console.error('Full process error:', err);
-      showToast(`Processing error: ${err.message}`, 'error');
+      if (err.message && err.message.includes('cancelled')) {
+        showToast('Processing cancelled.', 'info');
+      } else {
+        console.error('Full process error:', err);
+        showToast(`Processing error: ${err.message}`, 'error');
+      }
     } finally {
       setIsProcessing(false);
       setIsPreviewing(false);
@@ -240,7 +255,7 @@ export default function App() {
     if (!processedBuffer) return;
     setIsExporting(true);
     try {
-      const safeName = (characterName || 'Voice').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+      const safeName = sanitizeFilename(characterName, 'Voice');
       const filename = `${safeName}_Processed.wav`;
       const wavBlob = Exporters.audioBufferToWavBlob(processedBuffer);
       Exporters.triggerDownload(wavBlob, filename);
@@ -258,7 +273,7 @@ export default function App() {
     if (!processedBuffer) return;
     setIsExporting(true);
     try {
-      const safeName = (characterName || 'Voice').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+      const safeName = sanitizeFilename(characterName, 'Voice');
       const filename = `${safeName}_Processed.mp3`;
       const mp3Blob = Exporters.audioBufferToMp3Blob(processedBuffer, 192);
       Exporters.triggerDownload(mp3Blob, filename);

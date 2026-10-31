@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Upload, Mic, Disc3, Sparkles, AlertCircle } from 'lucide-react';
+import { validateFileExtension, validateAudioMagicBytes, MAX_FILE_SIZE_BYTES } from '../utils/security';
 
 export default function AudioUploader({ onFileLoaded, onLoadDemoSpeech, isProcessing }) {
   const [isDragging, setIsDragging] = useState(false);
@@ -35,14 +36,31 @@ export default function AudioUploader({ onFileLoaded, onLoadDemoSpeech, isProces
     }
   };
 
-  const processSelectedFile = (file) => {
+  const processSelectedFile = async (file) => {
     setErrorMessage(null);
-    if (!file.type.startsWith('audio/') && !file.name.match(/\.(wav|mp3|m4a|ogg|flac|webm|aac)$/i)) {
-      setErrorMessage('Please upload a valid audio file (.wav, .mp3, .m4a, .ogg, .flac).');
+
+    // 1. Strict extension validation allowlist
+    if (!validateFileExtension(file.name)) {
+      setErrorMessage('Unsupported file format. Please upload an authentic audio file (.wav, .mp3, .m4a, .ogg, .flac, .webm, .aac).');
       return;
     }
-    if (file.size > 150 * 1024 * 1024) {
-      setErrorMessage('File exceeds 150MB limit. To ensure low RAM consumption, please upload a shorter clip.');
+
+    // 2. Safe file size limit (50 MB)
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setErrorMessage('File exceeds the 50MB limit. To ensure low RAM consumption and fast processing, please upload a shorter clip.');
+      return;
+    }
+
+    // 3. Binary header magic byte inspection
+    try {
+      const headerSlice = await file.slice(0, 64).arrayBuffer();
+      const isValidSignature = validateAudioMagicBytes(headerSlice);
+      if (!isValidSignature) {
+        setErrorMessage('Invalid audio file signature. Only authentic audio recordings (WAV, MP3, M4A, OGG, FLAC, WebM) are supported.');
+        return;
+      }
+    } catch (err) {
+      setErrorMessage('Could not verify audio file integrity. Please try another audio file.');
       return;
     }
 

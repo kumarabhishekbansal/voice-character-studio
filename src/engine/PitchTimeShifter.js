@@ -79,6 +79,11 @@ export class PitchTimeShifter {
     let lastYield = performance.now();
 
     while (framesCollected < targetFrames) {
+      // Check cancellation signal to prevent runaway DoS or CPU freeze
+      if (options.isCancelled && options.isCancelled()) {
+        throw new Error('Audio processing cancelled.');
+      }
+
       const framesExtracted = filter.extract(chunkInterleaved, chunkSize);
       if (framesExtracted === 0) {
         break;
