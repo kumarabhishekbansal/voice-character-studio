@@ -3,7 +3,7 @@ import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import AudioUploader from './components/AudioUploader';
-import AudioAnalysisBadge from './components/AudioAnalysisBadge';
+import VoiceProfilePanel from './components/VoiceProfilePanel';
 import WaveformPlayer from './components/WaveformPlayer';
 import VoiceControls from './components/VoiceControls';
 import PresetSelector from './components/PresetSelector';
@@ -12,6 +12,7 @@ import ComparisonBar from './components/ComparisonBar';
 
 import { audioEngine } from './engine/AudioEngine';
 import { AudioAnalyzer } from './engine/AudioAnalyzer';
+import { VoiceProfileEngine } from './engine/VoiceProfileEngine';
 import { Exporters } from './engine/Exporters';
 import { generateSpeechSample } from './utils/sampleAudio';
 import { DEFAULT_VOICE_SETTINGS } from './constants/presets';
@@ -22,6 +23,7 @@ export default function App() {
   // Session Audio State (STRICTLY IN-MEMORY: NO IndexedDB, NO LocalStorage)
   const [originalBuffer, setOriginalBuffer] = useState(null);
   const [originalAnalysis, setOriginalAnalysis] = useState(null);
+  const [recommendedSettings, setRecommendedSettings] = useState(null);
 
   const [processedBuffer, setProcessedBuffer] = useState(null);
   const [processedAnalysis, setProcessedAnalysis] = useState(null);
@@ -75,48 +77,59 @@ export default function App() {
     };
   }, []);
 
-  // 1. Handle file upload
+  // 1. Handle file upload & automatic voice analysis
   const handleFileLoaded = async (file) => {
     audioEngine.abortCurrentJob();
     try {
       const safeDisplay = sanitizeFilename(file.name.replace(/\.[^/.]+$/, ''), 'Audio');
-      showToast(`Loading "${safeDisplay}" into session memory...`, 'info');
+      showToast(`Analyzing "${safeDisplay}" in session memory...`, 'info');
       const arrayBuffer = await file.arrayBuffer();
       const decoded = await audioEngine.decodeAudio(arrayBuffer);
-      const analysis = AudioAnalyzer.analyze(decoded, file);
+      const profile = VoiceProfileEngine.analyze(decoded, file);
 
       setOriginalBuffer(decoded);
-      setOriginalAnalysis(analysis);
+      setOriginalAnalysis(profile.detected);
+      setRecommendedSettings(profile.recommendedSettings);
+
+      // Automatically apply clean initial recommended settings
+      setSettings(profile.recommendedSettings);
+      setActivePresetId(null);
 
       setProcessedBuffer(null);
       setProcessedAnalysis(null);
       setActiveAB('A');
 
-      showToast(`Loaded ${analysis.formattedDuration} audio into RAM.`, 'success');
+      showToast(`Analyzed ${profile.detected.formattedDuration} audio. Recommended baseline settings generated!`, 'success');
     } catch (err) {
       console.error('File load error:', err);
       showToast(err.message || 'Failed to decode audio file.', 'error');
     }
   };
 
-  // 2. Load demo spoken sample
+  // 2. Load demo spoken sample with automatic acoustic analysis
   const handleLoadDemoSpeech = () => {
     try {
       const ctx = audioEngine.getAudioContext();
       const demoBuffer = generateSpeechSample(ctx);
-      const analysis = AudioAnalyzer.analyze(demoBuffer, {
+      const profile = VoiceProfileEngine.analyze(demoBuffer, {
         name: 'Demo_Speech_Phrase.wav',
         type: 'audio/wav',
         size: demoBuffer.length * 4,
       });
 
       setOriginalBuffer(demoBuffer);
-      setOriginalAnalysis(analysis);
+      setOriginalAnalysis(profile.detected);
+      setRecommendedSettings(profile.recommendedSettings);
+
+      // Automatically apply initial recommended settings
+      setSettings(profile.recommendedSettings);
+      setActivePresetId(null);
+
       setProcessedBuffer(null);
       setProcessedAnalysis(null);
       setActiveAB('A');
 
-      showToast('Loaded demo dialogue phrase. Try applying presets below!', 'success');
+      showToast('Loaded demo phrase with automatic voice profile & recommendations!', 'success');
     } catch (err) {
       console.error('Demo load error:', err);
       showToast('Failed to generate demo sample.', 'error');
@@ -128,13 +141,118 @@ export default function App() {
     audioEngine.abortCurrentJob();
     setOriginalBuffer(null);
     setOriginalAnalysis(null);
+    setRecommendedSettings(null);
     setProcessedBuffer(null);
     setProcessedAnalysis(null);
     setActiveAB('A');
     showToast('Session memory cleared. Audio buffers released.', 'info');
   };
 
-  // 4. Select preset
+  // 4. Apply / Reset to Recommended Settings
+  const handleApplyRecommended = () => {
+    if (recommendedSettings) {
+      audioEngine.abortCurrentJob();
+      setSettings({ ...recommendedSettings });
+      setActivePresetId(null);
+      showToast('Restored automatically recommended voice settings.', 'info');
+    }
+  };
+
+  // 5. Fast Preview of Recommended Settings
+  const handlePreviewRecommended = async () => {
+    if (!originalBuffer || !recommendedSettings) return;
+
+    try {
+      setIsProcessing(true);
+      setIsPreviewing(true);
+      setProcessingProgress(15);
+      setProcessingStage('Slicing preview segment & applying recommended DSP...');
+
+      const previewSlice = audioEngine.sliceBuffer(originalBuffer, 7.0);
+
+      const result = await audioEngine.process(
+        previewSlice,
+        recommendedSettings,
+        (pct) => {
+          setProcessingProgress(pct);
+          setProcessingStage(`Rendering recommended voice: ${pct}%...`);
+        },
+        true
+      );
+
+      const safeCharacterName = sanitizeFilename(characterName, 'Recommended');
+      const analysis = AudioAnalyzer.analyze(result, {
+        name: `${safeCharacterName}_Recommended_Preview.wav`,
+        type: 'audio/wav',
+        size: result.length * result.numberOfChannels * 4,
+      });
+
+      setProcessedBuffer(result);
+      setProcessedAnalysis(analysis);
+      setActiveAB('B');
+      showToast('Previewing recommended voice profile!', 'success');
+    } catch (err) {
+      if (err.message && err.message.includes('cancelled')) {
+        showToast('Processing cancelled.', 'info');
+      } else {
+        console.error('Preview error:', err);
+        showToast(`Processing error: ${err.message}`, 'error');
+      }
+    } finally {
+      setIsProcessing(false);
+      setIsPreviewing(false);
+    }
+  };
+
+  // 6. Download Voice Profile JSON Preset
+  const handleDownloadProfileJson = () => {
+    try {
+      const jsonStr = VoiceProfileEngine.generateProfileJson({
+        analysis: originalAnalysis,
+        recommendedSettings: recommendedSettings || settings,
+        currentSettings: settings,
+        characterName,
+      });
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const safeName = sanitizeFilename(characterName, 'AbhiVoiceChanger');
+      const filename = `${safeName}_VoiceProfile.json`;
+      Exporters.triggerDownload(blob, filename);
+      showToast(`Downloaded voice profile: ${filename}`, 'success');
+    } catch (err) {
+      console.error('JSON export error:', err);
+      showToast('Failed to export voice profile JSON.', 'error');
+    }
+  };
+
+  // 7. Import Voice Profile JSON Preset
+  const handleImportProfileJson = async (file) => {
+    try {
+      if (!file) return;
+      const text = await file.text();
+      const res = VoiceProfileEngine.validateAndParseProfileJson(text);
+      if (!res.success) {
+        showToast(res.error || 'Invalid or unsupported voice profile.', 'error');
+        return;
+      }
+
+      setSettings(res.data.settings);
+      if (res.data.characterName) {
+        setCharacterName(res.data.characterName);
+      }
+      if (res.data.recommendedSettings) {
+        setRecommendedSettings(res.data.recommendedSettings);
+      }
+      if (res.data.analysis && !originalAnalysis) {
+        setOriginalAnalysis(res.data.analysis);
+      }
+      setActivePresetId(null);
+      showToast('Voice profile imported successfully.', 'success');
+    } catch (err) {
+      showToast('Invalid or unsupported voice profile.', 'error');
+    }
+  };
+
+  // 8. Select preset
   const handleSelectPreset = (preset) => {
     setSettings({ ...preset.settings });
     setActivePresetId(preset.id);
@@ -144,7 +262,7 @@ export default function App() {
     showToast(`Applied preset: ${preset.name}. Click Preview to hear the change.`, 'info');
   };
 
-  // 5. Reset settings
+  // 9. Reset settings (Neutral Defaults)
   const handleResetSettings = () => {
     audioEngine.abortCurrentJob();
     setSettings(DEFAULT_VOICE_SETTINGS);
@@ -347,10 +465,19 @@ export default function App() {
             isProcessing={isProcessing}
           />
 
-          {/* Audio Analysis Stats */}
-          {originalAnalysis && (
-            <AudioAnalysisBadge analysis={originalAnalysis} />
-          )}
+          {/* Automatic Voice Analysis & Recommended Initial Settings */}
+          <VoiceProfilePanel
+            analysis={originalAnalysis}
+            recommendedSettings={recommendedSettings}
+            currentSettings={settings}
+            characterName={characterName}
+            onApplyRecommended={handleApplyRecommended}
+            onPreviewRecommended={handlePreviewRecommended}
+            onDownloadProfileJson={handleDownloadProfileJson}
+            onImportProfileJson={handleImportProfileJson}
+            isProcessing={isProcessing}
+            isPreviewing={isPreviewing}
+          />
 
           {/* Original Audio Waveform Player */}
           {originalBuffer && (

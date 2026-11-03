@@ -19,7 +19,12 @@ A professional web application designed for YouTube video voiceover and characte
    - **Independent Tempo / Rate Control**: 0.75x to 1.25x without affecting pitch.
    - **Formant Preservation & Shaping**: Dynamically compensates for vocal tract migration to eliminate "chipmunk" or "monster" artifacts.
 
-3. **Complete Vocal DSP Pipeline**
+3. **Smart Voice Profile & Automatic Analysis Engine**
+   - **Detected Acoustic Measurements**: Measures fundamental frequency (F0), musical note, pitch range, RMS dBFS, Peak dBFS, approximate LUFS, noise floor, dynamic range, spectral centroid brightness, sibilance, and digital clipping without guessing ("Not reliably detected" when uncertain).
+   - **Recommended Filter Settings**: Automatically suggests baseline non-aggressive filter parameters (Noise Gate, Vocal Compression, Tone EQ, De-Esser, Volume) tailored to the recording to naturally clean and balance dialogue.
+   - **Portable JSON Presets (.json)**: 1-click Download & Import of JSON voice profiles with strict schema validation, type verification, and parameter bounds clamping. Live synchronized with all slider tweaks.
+
+4. **Complete Vocal DSP Pipeline**
    - **Dynamic Noise Reduction Gate**: Silences background room noise and laptop fan hum.
    - **Character EQ**: 3-Band musical EQ (Bass at 120Hz, Presence at 3.2kHz, Treble at 7.2kHz).
    - **De-Esser**: Suppresses harsh sibilant spikes (6–8 kHz).

@@ -740,3 +740,122 @@ input[type="range"]::-webkit-slider-thumb:hover {
 .pulse-indicator {
   animation: pulseGlow 2s infinite ease-in-out;
 }
+
+/* Voice Profile & Automatic Analysis Panel */
+.voice-profile-card {
+  border: 1px solid rgba(0, 210, 255, 0.25);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.4);
+}
+
+.profile-action-btn {
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.analysis-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 10px;
+}
+
+.metric-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  transition: border-color 0.15s ease;
+}
+
+.metric-card:hover {
+  border-color: var(--border-light);
+}
+
+.metric-label {
+  font-size: 0.68rem;
+  color: var(--text-subtle);
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.metric-val-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.metric-val {
+  font-size: 0.94rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.metric-sub {
+  font-size: 0.7rem;
+  color: var(--text-subtle);
+  margin-top: 2px;
+  line-height: 1.3;
+}
+
+.recommended-chips-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 165px), 1fr));
+  gap: 8px;
+}
+
+.rec-chip {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+  font-size: 0.74rem;
+}
+
+.rec-chip-label {
+  color: var(--text-subtle);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.rec-chip-val {
+  color: #34d399;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+@media (max-width: 580px) {
+  .profile-action-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .analysis-metrics-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .recommended-chips-grid {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+}
+
