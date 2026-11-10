@@ -110,7 +110,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({ apiKey, apiVersion: 'v1beta' });
     const interaction = await ai.interactions.create({
       model,
       input: [

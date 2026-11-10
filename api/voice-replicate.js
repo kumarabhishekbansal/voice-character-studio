@@ -54,7 +54,7 @@ export default async function handler(req, res) {
   const cleanDisplayName = String(displayName).replace(/[^a-zA-Z0-9 _-]/g, '').trim().slice(0, 48) || 'Replicated Voice';
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({ apiKey, apiVersion: 'v1beta' });
     const voicePayload = {
       model: 'gemini-3.8-flash-tts',
       type: 'replicated',
