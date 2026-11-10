@@ -1,5 +1,8 @@
 import { FormantProcessor } from './FormantProcessor';
 import { generateStudioReverbImpulse } from './ReverbImpulse';
+import { PROCESSING_CHAIN_ORDER } from '../constants/presets';
+
+export { PROCESSING_CHAIN_ORDER };
 
 /**
  * Voice Effects Chain Architecture
@@ -25,10 +28,12 @@ export class VoiceEffectsChain {
     const sourceNode = offlineCtx.createBufferSource();
     sourceNode.buffer = inputBuffer;
 
-    // 2. High-Pass Filter (gentle rumble filter at 45 Hz to clear mic handling noise)
+    const nyquistSafe = (hz) => Math.max(20, Math.min(sampleRate * 0.48, hz));
+
+    // 2. High-Pass Filter (user-configurable 20 - 300 Hz, default 45 Hz rumble filter)
     const rumbleFilter = offlineCtx.createBiquadFilter();
     rumbleFilter.type = 'highpass';
-    rumbleFilter.frequency.value = 45;
+    rumbleFilter.frequency.value = nyquistSafe(settings.highPass ?? 45);
     rumbleFilter.Q.value = 0.707;
 
     // 3. Formant Shaping Network
@@ -37,28 +42,33 @@ export class VoiceEffectsChain {
       formant: settings.formant || 0,
     });
 
-    // 4. Voice Character EQ (Bass, Presence, Treble)
+    // 4. Voice Character EQ (Bass, Presence, Treble) + Low-Pass Filter
     const bassEQ = offlineCtx.createBiquadFilter();
     bassEQ.type = 'lowshelf';
-    bassEQ.frequency.value = 125;
+    bassEQ.frequency.value = nyquistSafe(125);
     bassEQ.gain.value = settings.bass || 0;
 
     const presenceEQ = offlineCtx.createBiquadFilter();
     presenceEQ.type = 'peaking';
-    presenceEQ.frequency.value = 3200;
+    presenceEQ.frequency.value = nyquistSafe(3200);
     presenceEQ.Q.value = 1.2;
     presenceEQ.gain.value = settings.presence || 0;
 
     const trebleEQ = offlineCtx.createBiquadFilter();
     trebleEQ.type = 'highshelf';
-    trebleEQ.frequency.value = 7200;
+    trebleEQ.frequency.value = nyquistSafe(7200);
     trebleEQ.gain.value = settings.treble || 0;
+
+    const lowPassFilter = offlineCtx.createBiquadFilter();
+    lowPassFilter.type = 'lowpass';
+    lowPassFilter.frequency.value = nyquistSafe(settings.lowPass ?? 20000);
+    lowPassFilter.Q.value = 0.707;
 
     // 5. De-Esser Band Filter
     // Attenuates excessive sibilance (6-8 kHz) if deEsser is enabled
     const deEsserFilter = offlineCtx.createBiquadFilter();
     deEsserFilter.type = 'peaking';
-    deEsserFilter.frequency.value = 6800;
+    deEsserFilter.frequency.value = nyquistSafe(6800);
     deEsserFilter.Q.value = 2.0;
     const deEsserAmount = (settings.deEsser || 0) / 100;
     deEsserFilter.gain.value = -deEsserAmount * 7.5; // Up to -7.5 dB dynamic sibilance dip
@@ -130,11 +140,12 @@ export class VoiceEffectsChain {
     sourceNode.connect(rumbleFilter);
     rumbleFilter.connect(formantNetwork.input);
 
-    // formant.output -> bassEQ -> presenceEQ -> trebleEQ -> deEsser -> saturation -> compressor
+    // formant.output -> bassEQ -> presenceEQ -> trebleEQ -> lowPassFilter -> deEsser -> saturation -> compressor
     formantNetwork.output.connect(bassEQ);
     bassEQ.connect(presenceEQ);
     presenceEQ.connect(trebleEQ);
-    trebleEQ.connect(deEsserFilter);
+    trebleEQ.connect(lowPassFilter);
+    lowPassFilter.connect(deEsserFilter);
     deEsserFilter.connect(saturationNode);
     saturationNode.connect(compressor);
 

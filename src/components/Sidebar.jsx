@@ -1,10 +1,44 @@
 import React from 'react';
-import { Mic2, Radio, ShieldCheck, Cpu, Video, Sparkles, DatabaseZap, X } from 'lucide-react';
+import {
+  Mic2,
+  Cpu,
+  Video,
+  DatabaseZap,
+  X,
+  Mic,
+  AudioLines,
+  Fingerprint,
+} from 'lucide-react';
 
-export default function Sidebar({ originalDuration, isProcessing, isOpen, onClose }) {
+export default function Sidebar({
+  activeMode = 'voice-changer',
+  onModeChange,
+  originalDuration,
+  hasUniversalIdentity,
+  isProcessing,
+  isOpen,
+  onClose,
+}) {
+  const voiceChangerSteps = [
+    { step: '1', title: 'Record or Upload Voice', desc: 'Authentic speech audio in RAM' },
+    { step: '2', title: 'Auto Profile & Reference', desc: 'Measure F0, noise floor & timbre' },
+    { step: '3', title: 'Character & 16 Filters', desc: 'Formants, EQ, dynamics & spatial FX' },
+    { step: '4', title: 'Fast Preview & Process', desc: 'Non-destructive A/B comparison' },
+    { step: '5', title: 'Export Audio & Universal JSON', desc: 'WAV/MP3 + reusable Voice Profile' },
+  ];
+
+  const ttsSteps = [
+    { step: '1', title: 'Select AI Engine', desc: 'Gemini 3.8 TTS or Local Kokoro-82M' },
+    { step: '2', title: 'Write Script & Speakers', desc: 'Split paragraphs & assign characters' },
+    { step: '3', title: 'Emotions, Styles & Pauses', desc: 'Segment-level acting + pronunciation' },
+    { step: '4', title: 'Generate Natural Speech', desc: 'Seamless multi-turn synthesis' },
+    { step: '5', title: 'Apply Shared DSP & Export', desc: '16 studio filters -> WAV/MP3' },
+  ];
+
+  const steps = activeMode === 'tts' ? ttsSteps : voiceChangerSteps;
+
   return (
     <>
-      {/* Mobile Drawer Backdrop */}
       {isOpen && (
         <div
           className="sidebar-backdrop"
@@ -41,12 +75,11 @@ export default function Sidebar({ originalDuration, isProcessing, isOpen, onClos
                 Abhi<span style={{ color: 'var(--accent-cyan)' }}>Voice</span>
               </h2>
               <span style={{ fontSize: '0.7rem', color: 'var(--accent-cyan)', fontWeight: 500 }}>
-                Natural Character DSP
+                Voice & AI Speech Studio
               </span>
             </div>
           </div>
 
-          {/* Close button on mobile drawer */}
           <button
             type="button"
             className="sidebar-close-btn"
@@ -59,61 +92,88 @@ export default function Sidebar({ originalDuration, isProcessing, isOpen, onClos
 
         {/* Main Content inside Sidebar */}
         <div style={{
-          padding: '18px',
+          padding: '16px',
           flex: 1,
           display: 'flex',
           flexDirection: 'column',
-          gap: '18px',
+          gap: '16px',
           overflowY: 'auto'
         }}>
-          {/* Session In-Memory Status (NO STORAGE GUARANTEE) */}
+          {/* Mode Quick Switch inside Sidebar */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>
+              Studio Workspace
+            </span>
+            <button
+              type="button"
+              className={`sidebar-nav-btn ${activeMode === 'voice-changer' ? 'sidebar-nav-active' : ''}`}
+              onClick={() => {
+                onModeChange('voice-changer');
+                onClose();
+              }}
+            >
+              <Mic size={15} />
+              <span>Voice Changer</span>
+            </button>
+            <button
+              type="button"
+              className={`sidebar-nav-btn ${activeMode === 'tts' ? 'sidebar-nav-active-tts' : ''}`}
+              onClick={() => {
+                onModeChange('tts');
+                onClose();
+              }}
+            >
+              <AudioLines size={15} />
+              <span>Text to Speech</span>
+            </button>
+          </div>
+
+          {/* Session In-Memory Status */}
           <div style={{
             background: 'rgba(16, 185, 129, 0.08)',
             border: '1px solid rgba(16, 185, 129, 0.25)',
             borderRadius: '10px',
-            padding: '14px',
+            padding: '12px',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <DatabaseZap size={16} color="#34d399" />
-              <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#34d399' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+              <DatabaseZap size={15} color="#34d399" />
+              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#34d399' }}>
                 Strict In-Memory Session
               </span>
             </div>
-            <p style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
-              Zero disk caching. Audio exists in active RAM only. No IndexedDB or localStorage used.
+            <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+              Zero persistent database or audio history. Refreshing purges active RAM buffers cleanly.
             </p>
-            <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.72rem' }}>
-              <span style={{ color: 'var(--text-subtle)' }}>Disk Footprint:</span>
-              <span style={{ fontFamily: 'var(--font-mono)', color: '#34d399', fontWeight: 600 }}>0 KB (Clean)</span>
-            </div>
             {originalDuration > 0 && (
-              <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.72rem' }}>
+              <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.72rem' }}>
                 <span style={{ color: 'var(--text-subtle)' }}>Active Audio:</span>
                 <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>
-                  {originalDuration.toFixed(1)}s loaded
+                  {originalDuration.toFixed(1)}s in RAM
                 </span>
               </div>
             )}
+            <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.72rem' }}>
+              <span style={{ color: 'var(--text-subtle)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <Fingerprint size={12} color="#38bdf8" /> Identity:
+              </span>
+              <span style={{ fontFamily: 'var(--font-mono)', color: hasUniversalIdentity ? '#38bdf8' : 'var(--text-subtle)' }}>
+                {hasUniversalIdentity ? 'Ref Loaded' : 'None'}
+              </span>
+            </div>
           </div>
 
-          {/* YouTube Workflow Steps */}
+          {/* Dynamic Mode Workflow Steps */}
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px', color: 'var(--text-muted)' }}>
-              <Video size={15} color="#f43f5e" />
-              <span style={{ fontSize: '0.76rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
-                YouTube Workflow
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px', color: 'var(--text-muted)' }}>
+              <Video size={14} color="#f43f5e" />
+              <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
+                {activeMode === 'tts' ? 'AI Speech Workflow' : 'Voice Changer Workflow'}
               </span>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {[
-                { step: '1', title: 'Record Voice', desc: 'Read your character dialogue' },
-                { step: '2', title: 'Upload & Analyze', desc: 'Instant waveform & acoustic metrics' },
-                { step: '3', title: 'Preset & Formant', desc: 'Tune vocal tract geometry' },
-                { step: '4', title: 'Fast Preview (7s)', desc: 'Instant feedback without waiting' },
-                { step: '5', title: 'Process & Download', desc: 'WAV/MP3 for Premiere, CapCut, VN' },
-              ].map((item) => (
-                <div key={item.step} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
+              {steps.map((item) => (
+                <div key={item.step} style={{ display: 'flex', gap: '9px', alignItems: 'flex-start' }}>
                   <span style={{
                     width: '18px',
                     height: '18px',
@@ -123,19 +183,19 @@ export default function Sidebar({ originalDuration, isProcessing, isOpen, onClos
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    fontSize: '0.68rem',
+                    fontSize: '0.66rem',
                     fontFamily: 'var(--font-mono)',
-                    color: 'var(--accent-cyan)',
+                    color: activeMode === 'tts' ? '#a78bfa' : 'var(--accent-cyan)',
                     flexShrink: 0,
                     marginTop: '1px'
                   }}>
                     {item.step}
                   </span>
                   <div>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 500, color: 'var(--text-main)' }}>
+                    <div style={{ fontSize: '0.76rem', fontWeight: 500, color: 'var(--text-main)' }}>
                       {item.title}
                     </div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-subtle)' }}>
                       {item.desc}
                     </div>
                   </div>
@@ -144,22 +204,22 @@ export default function Sidebar({ originalDuration, isProcessing, isOpen, onClos
             </div>
           </div>
 
-          {/* Natural DSP Architecture Spec */}
+          {/* Shared DSP Engine Spec */}
           <div style={{
             background: 'var(--bg-surface)',
             border: '1px solid var(--border)',
             borderRadius: '10px',
-            padding: '14px',
+            padding: '12px',
             marginTop: 'auto'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-              <Cpu size={15} color="var(--accent-cyan)" />
-              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)' }}>
-                Natural DSP Engine
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '5px' }}>
+              <Cpu size={14} color="var(--accent-cyan)" />
+              <span style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                Shared 16-Filter DSP Core
               </span>
             </div>
-            <p style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', lineHeight: '1.4' }}>
-              WSOLA pitch transposer with decoupled tempo speed and formant compensation filters.
+            <p style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', lineHeight: '1.4' }}>
+              WSOLA pitch/tempo, High/Low-Pass, 3-band EQ, Formants, Warmth, De-Esser, Compression & Gate shared by both modes.
             </p>
             <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{
@@ -168,7 +228,7 @@ export default function Sidebar({ originalDuration, isProcessing, isOpen, onClos
                 borderRadius: '50%',
                 backgroundColor: isProcessing ? '#f59e0b' : '#10b981'
               }} className="pulse-indicator" />
-              <span style={{ fontSize: '0.7rem', color: isProcessing ? '#f59e0b' : '#10b981', fontWeight: 500 }}>
+              <span style={{ fontSize: '0.68rem', color: isProcessing ? '#f59e0b' : '#10b981', fontWeight: 500 }}>
                 {isProcessing ? 'Processing Audio...' : 'DSP Core Idle'}
               </span>
             </div>

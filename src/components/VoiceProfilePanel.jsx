@@ -186,7 +186,9 @@ export default function VoiceProfilePanel({
               )}
             </div>
             <span className="metric-sub">
-              {detected.pitchRange ? `Voiced range: ${detected.pitchRange}` : 'Non-tonal or unvoiced recording'}
+              {detected.pitchRange
+                ? `Range: ${detected.pitchRange}${detected.pitchVariationHz ? ` (±${detected.pitchVariationHz} Hz)` : ''}`
+                : 'Non-tonal or unvoiced recording'}
             </span>
           </div>
 
@@ -306,6 +308,19 @@ export default function VoiceProfilePanel({
               {detected.bitDepth} &bull; {detected.formattedDuration}
             </span>
           </div>
+
+          {/* Estimated Timbre & Breathiness */}
+          <div className="metric-card">
+            <span className="metric-label">Timbre & Breathiness (Estimated)</span>
+            <div className="metric-val-row">
+              <span className="metric-val" style={{ color: '#c084fc', fontSize: '0.78rem' }}>
+                {detected.timbreLabel || 'Not reliably detected'}
+              </span>
+            </div>
+            <span className="metric-sub">
+              {detected.breathinessIndicator || 'Harmonic balance unavailable'}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -380,16 +395,18 @@ export default function VoiceProfilePanel({
             <span className="rec-chip-val">{rec.volume ?? 100}%</span>
           </div>
           <div className="rec-chip">
-            <span className="rec-chip-label">Bass EQ:</span>
-            <span className="rec-chip-val">{rec.bass > 0 ? `+${rec.bass}` : rec.bass ?? 0} dB</span>
+            <span className="rec-chip-label">High-Pass:</span>
+            <span className="rec-chip-val">{rec.highPass ?? 45} Hz</span>
           </div>
           <div className="rec-chip">
-            <span className="rec-chip-label">Presence EQ:</span>
-            <span className="rec-chip-val">{rec.presence > 0 ? `+${rec.presence}` : rec.presence ?? 0} dB</span>
+            <span className="rec-chip-label">Low-Pass:</span>
+            <span className="rec-chip-val">{(rec.lowPass ?? 20000) >= 19500 ? 'Bypass (20k)' : `${rec.lowPass} Hz`}</span>
           </div>
           <div className="rec-chip">
-            <span className="rec-chip-label">Treble EQ:</span>
-            <span className="rec-chip-val">{rec.treble > 0 ? `+${rec.treble}` : rec.treble ?? 0} dB</span>
+            <span className="rec-chip-label">Bass / Pres / Treb:</span>
+            <span className="rec-chip-val">
+              {rec.bass ?? 0} / {rec.presence ?? 0} / {rec.treble ?? 0} dB
+            </span>
           </div>
           <div className="rec-chip">
             <span className="rec-chip-label">Warmth:</span>

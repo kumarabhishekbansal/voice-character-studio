@@ -84,9 +84,10 @@ export default function VoiceControls({ settings, onChange, onResetParam }) {
         {renderSlider('pitch', 'Pitch Shift', -12, 12, 0.5, 'st', 0)}
         {renderSlider('rate', 'Speaking Rate (Tempo)', 0.75, 1.25, 0.01, 'x', 1.0)}
         {renderSlider('volume', 'Master Volume', 0, 150, 5, '%', 100)}
+        {renderSlider('highPass', 'High-Pass Filter (Rumble)', 20, 300, 5, 'Hz', 45)}
 
         <p style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', marginTop: '6px', lineHeight: '1.4' }}>
-          Pitch shifts without altering speaking speed.
+          Pitch shifts without altering speaking speed. High-pass cuts sub-bass mic thumps.
         </p>
       </div>
 
@@ -106,6 +107,7 @@ export default function VoiceControls({ settings, onChange, onResetParam }) {
         {renderSlider('bass', 'Bass (Body)', -12, 12, 0.5, 'dB', 0)}
         {renderSlider('presence', 'Presence (Clarity)', -12, 12, 0.5, 'dB', 0)}
         {renderSlider('treble', 'Treble (Air)', -12, 12, 0.5, 'dB', 0)}
+        {renderSlider('lowPass', 'Low-Pass Filter (Smooth)', 3500, 20000, 250, 'Hz', 20000)}
         {renderSlider('warmth', 'Warmth (Even Harmonics)', 0, 100, 5, '%', 15)}
       </div>
 

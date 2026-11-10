@@ -1,10 +1,22 @@
-import { sanitizeAudioSettings, sanitizeFilename } from '../utils/security.js';
+import {
+  sanitizeAudioSettings,
+  sanitizeFilename,
+  sanitizeTextScript,
+  checkJsonSafety,
+  validateBase64WavAudio,
+  computeSha256Hex,
+  MAX_UNIVERSAL_PROFILE_BYTES,
+} from '../utils/security.js';
+import {
+  FILTER_DEFINITIONS,
+  DEFAULT_VOICE_SETTINGS,
+  PROCESSING_CHAIN_ORDER,
+} from '../constants/presets.js';
 
 /**
- * Voice Profile & Audio Analysis Engine
- * Performs deep, reliable acoustic measurements (F0, RMS, Peak, LUFS, Noise Floor,
- * Dynamics, Spectral Centroid, Sibilance, Clipping) and calculates natural,
- * studio-grade initial filter recommendations.
+ * Voice Profile, Acoustic Analysis & Universal Identity Engine (v1.0 & v2.0)
+ * Performs deep, honest acoustic measurements and builds portable Universal Voice Identity JSONs
+ * reusable across both Speech-to-Speech and Text-to-Speech modes.
  */
 export class VoiceProfileEngine {
   /**
@@ -104,10 +116,6 @@ export class VoiceProfileEngine {
 
   /**
    * Performs complete acoustic and technical analysis on an AudioBuffer
-   * 
-   * @param {AudioBuffer} buffer
-   * @param {File} [file]
-   * @returns {Object} { detected, recommendedSettings, recommendationReasons }
    */
   static analyze(buffer, file = null) {
     const sampleRate = buffer.sampleRate;
@@ -115,7 +123,6 @@ export class VoiceProfileEngine {
     const duration = buffer.duration;
     const length = buffer.length;
 
-    // Use primary channel (or mix of stereo) for pitch and spectral analysis
     const ch0 = buffer.getChannelData(0);
     const ch1 = numberOfChannels > 1 ? buffer.getChannelData(1) : null;
 
@@ -123,7 +130,6 @@ export class VoiceProfileEngine {
     let sumSq = 0;
     let clippedSamplesCount = 0;
 
-    // 1. Scan for overall peak, RMS, and clipping
     for (let i = 0; i < length; i++) {
       const s0 = ch0[i];
       const absS0 = Math.abs(s0);
@@ -145,8 +151,8 @@ export class VoiceProfileEngine {
     const peakDb = peak > 1e-6 ? 20 * Math.log10(peak) : -96;
     const rmsDb = rms > 1e-6 ? 20 * Math.log10(rms) : -96;
 
-    // 2. Block-based Energy, Noise Floor, Voice Activity & Dynamic Range
-    const blockSize = Math.max(256, Math.floor(sampleRate * 0.05)); // 50ms blocks
+    // Block-based Energy, Noise Floor, Voice Activity & Dynamic Range
+    const blockSize = Math.max(256, Math.floor(sampleRate * 0.05));
     const numBlocks = Math.floor(length / blockSize);
     const blockEnergiesDb = [];
 
@@ -169,39 +175,29 @@ export class VoiceProfileEngine {
 
     if (blockEnergiesDb.length > 0) {
       const sortedDbs = [...blockEnergiesDb].sort((a, b) => a - b);
-      // Noise floor is approximated by the 8th percentile of frame energy
       const noiseIndex = Math.min(sortedDbs.length - 1, Math.floor(sortedDbs.length * 0.08));
       noiseFloorDb = Math.round(sortedDbs[noiseIndex] * 10) / 10;
 
-      // Active speech threshold: noise floor + 10 dB or min -48 dBFS
       const speechThreshold = Math.max(-50, noiseFloorDb + 10);
       let silentBlocks = 0;
-      let activeBlocks = 0;
-
       for (let i = 0; i < blockEnergiesDb.length; i++) {
-        if (blockEnergiesDb[i] < speechThreshold) {
-          silentBlocks++;
-        } else {
-          activeBlocks++;
-        }
+        if (blockEnergiesDb[i] < speechThreshold) silentBlocks++;
       }
 
       silencePercent = Math.round((silentBlocks / blockEnergiesDb.length) * 100);
       voiceActivityPercent = 100 - silencePercent;
 
-      // Dynamic Range: Peak dB minus 10th percentile speech energy
       const p90 = sortedDbs[Math.floor(sortedDbs.length * 0.9)] || peakDb;
       const p10 = sortedDbs[Math.floor(sortedDbs.length * 0.1)] || rmsDb;
       dynamicRangeDb = Math.max(0, Math.round((p90 - p10) * 10) / 10);
     }
 
-    // 3. Approximate Integrated LUFS (K-weighting pre-filter approximation)
+    // Approximate Integrated LUFS (K-weighting pre-filter approximation)
     let approxLufs = null;
     if (rmsDb > -80) {
-      // High-shelf boost of high frequencies (~+4dB above 1.5kHz) and high-pass at 100Hz
       let lufsSumSq = 0;
       let lufsCount = 0;
-      const lufsGate = rmsDb - 10; // Gated at -10 relative dB
+      const lufsGate = rmsDb - 10;
 
       for (let b = 0; b < numBlocks; b++) {
         if (blockEnergiesDb[b] >= lufsGate) {
@@ -221,8 +217,7 @@ export class VoiceProfileEngine {
       }
     }
 
-    // 4. Fundamental Frequency (F0) & Pitch Detection via Autocorrelation
-    // Pitch search range: 65 Hz (deep male) to 450 Hz (high speech)
+    // Fundamental Frequency (F0) & Pitch Variation via Normalized Autocorrelation
     const minPeriod = Math.floor(sampleRate / 450);
     const maxPeriod = Math.floor(sampleRate / 65);
     const pitchFrameSize = 2048;
@@ -235,7 +230,6 @@ export class VoiceProfileEngine {
 
       for (let f = 0; f < maxPitchFrames; f += stepFrames) {
         const offset = f * pitchHop;
-        // Compute frame RMS
         let fRms = 0;
         for (let i = 0; i < pitchFrameSize; i++) {
           fRms += ch0[offset + i] * ch0[offset + i];
@@ -243,10 +237,9 @@ export class VoiceProfileEngine {
         fRms = Math.sqrt(fRms / pitchFrameSize);
         const fDb = fRms > 1e-6 ? 20 * Math.log10(fRms) : -96;
 
-        // Only evaluate frames with audible voiced energy
         if (fDb > -48 && (noiseFloorDb < -35 ? fDb > noiseFloorDb + 5 : true)) {
           let bestCorr = 0;
-          let bestLag = -1;
+          const corrs = new Float32Array(maxPeriod - minPeriod + 1);
 
           for (let lag = minPeriod; lag <= maxPeriod; lag++) {
             let num = 0;
@@ -263,20 +256,26 @@ export class VoiceProfileEngine {
             }
 
             const denom = Math.sqrt(den1 * den2);
-            if (denom > 1e-6) {
-              const r = num / denom;
-              if (r > bestCorr) {
-                bestCorr = r;
-                bestLag = lag;
-              }
-            }
+            const r = denom > 1e-6 ? num / denom : 0;
+            corrs[lag - minPeriod] = r;
+            if (r > bestCorr) bestCorr = r;
           }
 
-          // Strict voicing correlation threshold to avoid spurious detections
-          if (bestCorr > 0.52 && bestLag > 0) {
-            const freq = sampleRate / bestLag;
-            if (freq >= 65 && freq <= 450) {
-              detectedPitches.push(freq);
+          if (bestCorr > 0.52) {
+            // Select first strong peak (within 94% of global max) to prevent octave subharmonic halving
+            const threshold = Math.max(0.52, bestCorr * 0.94);
+            let chosenLag = -1;
+            for (let idx = 1; idx < corrs.length - 1; idx++) {
+              if (corrs[idx] >= threshold && corrs[idx] >= corrs[idx - 1] && corrs[idx] >= corrs[idx + 1]) {
+                chosenLag = minPeriod + idx;
+                break;
+              }
+            }
+            if (chosenLag > 0) {
+              const freq = sampleRate / chosenLag;
+              if (freq >= 65 && freq <= 450) {
+                detectedPitches.push(freq);
+              }
             }
           }
         }
@@ -286,42 +285,47 @@ export class VoiceProfileEngine {
     let averagePitchHz = null;
     let averagePitchNote = null;
     let pitchRange = null;
+    let pitchVariationHz = null;
 
-    // Must have at least 4 consistent voiced frames to reliably claim F0
     if (detectedPitches.length >= 4) {
       detectedPitches.sort((a, b) => a - b);
       const medianF0 = detectedPitches[Math.floor(detectedPitches.length / 2)];
       const minF0 = detectedPitches[0];
       const maxF0 = detectedPitches[detectedPitches.length - 1];
 
-      // Consistency check: max/min should not exceed 3.5 octaves
       if (maxF0 / minF0 < 4.0) {
         averagePitchHz = Math.round(medianF0 * 10) / 10;
         averagePitchNote = VoiceProfileEngine.hzToNote(medianF0);
         pitchRange = `${Math.round(minF0)} Hz – ${Math.round(maxF0)} Hz`;
+
+        // Calculate standard deviation of pitch for expressiveness indicator
+        const mean = detectedPitches.reduce((acc, v) => acc + v, 0) / detectedPitches.length;
+        const variance = detectedPitches.reduce((acc, v) => acc + (v - mean) ** 2, 0) / detectedPitches.length;
+        pitchVariationHz = Math.round(Math.sqrt(variance) * 10) / 10;
       }
     }
 
-    // 5. Spectral Characteristics via FFT (Centroid, Energy Bands & Sibilance)
+    // Spectral Characteristics via FFT (Centroid, Energy Bands, Brightness/Warmth/Breathiness Estimates)
     const fftSize = 2048;
     let spectralCentroidHz = null;
     let lowEnergyPercent = 33;
     let midEnergyPercent = 52;
     let highEnergyPercent = 15;
     let sibilanceIndicator = 'Not reliably detected';
+    let spectralFlatness = null;
+    let breathinessIndicator = 'Not reliably detected';
+    let timbreLabel = 'Not reliably detected';
 
     if (length >= fftSize) {
-      // Analyze up to 6 speech windows and average their power spectrum
       const numWindows = Math.min(8, Math.floor(length / fftSize));
       const avgSpectrum = new Float32Array(fftSize / 2);
       let validWindows = 0;
 
       for (let w = 0; w < numWindows; w++) {
-        const offset = Math.floor(w * (length - fftSize) / Math.max(1, numWindows - 1));
+        const offset = Math.floor((w * (length - fftSize)) / Math.max(1, numWindows - 1));
         const real = new Float32Array(fftSize);
         const imag = new Float32Array(fftSize);
 
-        // Hann window
         for (let i = 0; i < fftSize; i++) {
           const hann = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (fftSize - 1)));
           real[i] = ch0[offset + i] * hann;
@@ -347,38 +351,42 @@ export class VoiceProfileEngine {
         let numCentroid = 0;
         let denCentroid = 0;
 
-        let lowBand = 0;  // < 300 Hz
-        let midBand = 0;  // 300 Hz - 3500 Hz
-        let highBand = 0; // > 3500 Hz
-
-        let sibilantEnergy = 0; // 5.5 kHz - 9 kHz
-        let voiceCoreEnergy = 0; // 1 kHz - 4 kHz
+        let lowBand = 0;
+        let midBand = 0;
+        let highBand = 0;
+        let sibilantEnergy = 0;
+        let voiceCoreEnergy = 0;
+        let logSum = 0;
+        let linSum = 0;
+        let flatBins = 0;
 
         for (let k = 1; k < fftSize / 2; k++) {
           const freq = k * binFreq;
+          const power = Math.max(1e-12, avgSpectrum[k]);
           const mag = Math.sqrt(avgSpectrum[k]);
-          const power = avgSpectrum[k];
 
           numCentroid += freq * mag;
           denCentroid += mag;
 
-          if (freq < 300) {
-            lowBand += power;
-          } else if (freq <= 3500) {
-            midBand += power;
-          } else {
-            highBand += power;
-          }
+          if (freq < 300) lowBand += power;
+          else if (freq <= 3500) midBand += power;
+          else highBand += power;
 
-          if (freq >= 5500 && freq <= 9000) {
-            sibilantEnergy += power;
-          } else if (freq >= 1000 && freq <= 4000) {
-            voiceCoreEnergy += power;
+          if (freq >= 5500 && freq <= 9000) sibilantEnergy += power;
+          else if (freq >= 1000 && freq <= 4000) voiceCoreEnergy += power;
+
+          if (freq >= 1500 && freq <= 6000) {
+            logSum += Math.log(power);
+            linSum += power;
+            flatBins++;
           }
         }
 
         if (denCentroid > 1e-6) {
           spectralCentroidHz = Math.round(numCentroid / denCentroid);
+          if (spectralCentroidHz < 1450) timbreLabel = 'Warm / Dark Chest Resonance (Estimated)';
+          else if (spectralCentroidHz < 2600) timbreLabel = 'Balanced Natural Vocal Midrange (Estimated)';
+          else timbreLabel = 'Bright / Crisp Upper Articulation (Estimated)';
         }
 
         const totalBand = lowBand + midBand + highBand;
@@ -388,19 +396,23 @@ export class VoiceProfileEngine {
           highEnergyPercent = Math.max(0, 100 - lowEnergyPercent - midEnergyPercent);
         }
 
-        // Sibilance evaluation
         const sibRatio = voiceCoreEnergy > 1e-6 ? sibilantEnergy / voiceCoreEnergy : 0;
-        if (sibRatio > 0.45) {
-          sibilanceIndicator = 'High Sibilance (Harsh)';
-        } else if (sibRatio > 0.22) {
-          sibilanceIndicator = 'Moderate (Natural)';
-        } else {
-          sibilanceIndicator = 'Low (Soft)';
+        if (sibRatio > 0.45) sibilanceIndicator = 'High Sibilance (Harsh)';
+        else if (sibRatio > 0.22) sibilanceIndicator = 'Moderate (Natural)';
+        else sibilanceIndicator = 'Low (Soft)';
+
+        // High-mid spectral flatness as conservative breathiness/air indicator
+        if (flatBins > 0 && linSum > 1e-9) {
+          const geoMean = Math.exp(logSum / flatBins);
+          const arithMean = linSum / flatBins;
+          spectralFlatness = Math.round((geoMean / arithMean) * 1000) / 1000;
+          if (spectralFlatness > 0.22) breathinessIndicator = 'Airy / Breathy High Registers (Estimated)';
+          else if (spectralFlatness > 0.08) breathinessIndicator = 'Moderate Breath / Natural Harmonic (Estimated)';
+          else breathinessIndicator = 'Dense Harmonic Focus (Estimated)';
         }
       }
     }
 
-    // 6. Original format & bit depth detection
     const originalFormat = file
       ? (file.name.split('.').pop() || 'WAV').toUpperCase()
       : 'WAV';
@@ -415,7 +427,6 @@ export class VoiceProfileEngine {
 
     const waveformPeaks = VoiceProfileEngine.extractWaveformPeaks(buffer, 800);
 
-    // Assembly of detected measurements
     const detected = {
       duration: Math.round(duration * 100) / 100,
       formattedDuration: VoiceProfileEngine.formatTime(duration),
@@ -434,11 +445,15 @@ export class VoiceProfileEngine {
       averagePitchHz,
       averagePitchNote,
       pitchRange,
+      pitchVariationHz,
       spectralCentroidHz,
       lowEnergyPercent,
       midEnergyPercent,
       highEnergyPercent,
       sibilanceIndicator,
+      spectralFlatness,
+      breathinessIndicator,
+      timbreLabel,
       clippingDetected: clippedSamplesCount > 0,
       clippedSamplesCount,
       waveformPeaks,
@@ -446,7 +461,6 @@ export class VoiceProfileEngine {
       fileSize: file ? VoiceProfileEngine.formatBytes(file.size) : `${Math.round((length * numberOfChannels * 4) / 1024)} KB (RAM)`,
     };
 
-    // 7. Calculate Recommended Settings & Human-Readable Explanations
     const { recommendedSettings, recommendationReasons } = VoiceProfileEngine.calculateRecommendations(detected);
 
     return {
@@ -458,17 +472,15 @@ export class VoiceProfileEngine {
 
   /**
    * Calculates balanced, natural initial recommendations based on detected measurements
-   * 
-   * @param {Object} detected
-   * @returns {Object} { recommendedSettings, recommendationReasons }
    */
   static calculateRecommendations(detected) {
     const reasons = [];
 
-    // Base neutral settings
     let pitch = 0;
     let rate = 1.0;
     let volume = 100;
+    let highPass = 45;
+    let lowPass = 20000;
     let formant = 0;
     let bass = 0;
     let presence = 0;
@@ -481,19 +493,20 @@ export class VoiceProfileEngine {
     let echo = 0;
     let saturation = 3;
 
-    // 1. Noise Reduction
     if (detected.noiseFloorDb > -44) {
       noiseReduction = 28;
-      reasons.push(`Audible background noise detected (${detected.noiseFloorDb} dBFS): +28% noise gate recommended to clean room hum.`);
+      highPass = 75;
+      reasons.push(`Audible background noise detected (${detected.noiseFloorDb} dBFS): +28% noise gate & 75 Hz high-pass recommended to clean room hum.`);
     } else if (detected.noiseFloorDb > -54) {
       noiseReduction = 18;
+      highPass = 55;
       reasons.push(`Moderate ambient floor (${detected.noiseFloorDb} dBFS): 18% gentle noise reduction applied.`);
     } else {
       noiseReduction = 8;
+      highPass = 45;
       reasons.push(`Clean acoustic environment (${detected.noiseFloorDb} dBFS): low 8% noise gate to preserve natural room breathing.`);
     }
 
-    // 2. Dynamic Compression
     if (detected.dynamicRangeDb > 24 || detected.rmsDb < -26) {
       compression = 32;
       reasons.push(`Wide dynamic variance (${detected.dynamicRangeDb} dB): 32% studio leveling recommended for consistent voiceover.`);
@@ -505,17 +518,15 @@ export class VoiceProfileEngine {
       reasons.push(`Healthy dynamic range (${detected.dynamicRangeDb} dB): natural 22% vocal compression.`);
     }
 
-    // 3. De-Esser (Sibilance Control)
-    if (detected.sibilanceIndicator.includes('High')) {
+    if (detected.sibilanceIndicator?.includes('High')) {
       deEsser = 32;
       reasons.push('Elevated high-frequency sibilance (6–8 kHz): 32% de-esser to tame sharp consonants.');
-    } else if (detected.sibilanceIndicator.includes('Moderate')) {
+    } else if (detected.sibilanceIndicator?.includes('Moderate')) {
       deEsser = 18;
     } else {
       deEsser = 10;
     }
 
-    // 4. Tone Balance (Bass, Presence, Treble & Warmth)
     if (detected.lowEnergyPercent < 22 && detected.spectralCentroidHz && detected.spectralCentroidHz > 2500) {
       bass = 2.0;
       warmth = 22;
@@ -523,6 +534,7 @@ export class VoiceProfileEngine {
     } else if (detected.lowEnergyPercent > 48) {
       bass = -1.5;
       presence = 1.5;
+      highPass = Math.max(highPass, 85);
       reasons.push('Heavy proximity or low-frequency rumble: -1.5 dB bass cut and +1.5 dB presence for articulation.');
     }
 
@@ -532,10 +544,10 @@ export class VoiceProfileEngine {
       reasons.push('Warm/dark voice response: +1.5 dB treble air to enhance vocal presence.');
     } else if (detected.spectralCentroidHz && detected.spectralCentroidHz > 3200) {
       treble = -1.0;
-      reasons.push('Excessive high-frequency brightness: -1.0 dB treble smoothing.');
+      lowPass = 15500;
+      reasons.push('Excessive high-frequency brightness: -1.0 dB treble smoothing & gentle 15.5 kHz low-pass.');
     }
 
-    // 5. Volume & Headroom
     if (detected.clippingDetected) {
       volume = 92;
       reasons.push(`Digital clipping detected (${detected.clippedSamplesCount} samples): master gain reduced to 92% to prevent distortion.`);
@@ -546,18 +558,12 @@ export class VoiceProfileEngine {
       volume = 100;
     }
 
-    // Preserve original voice pitch and rate
-    pitch = 0;
-    rate = 1.0;
-    formant = 0;
-    echo = 0;
-    reverb = 4;
-    saturation = 3;
-
     const recommendedSettings = sanitizeAudioSettings({
       pitch,
       rate,
       volume,
+      highPass,
+      lowPass,
       formant,
       bass,
       presence,
@@ -575,71 +581,265 @@ export class VoiceProfileEngine {
   }
 
   /**
-   * Generates a portable, validated JSON preset object matching section 14 specs
+   * Builds full Filter Descriptor dictionary capturing exact configured values, bounds, units & order
    */
-  static generateProfileJson({ analysis, recommendedSettings, currentSettings, characterName = 'Voice' }) {
-    const safeCharacter = sanitizeFilename(characterName, 'Voice');
+  static buildFilterMap(currentSettings, recommendedSettings = null) {
     const safeCurrent = sanitizeAudioSettings(currentSettings);
-    const safeRec = sanitizeAudioSettings(recommendedSettings);
+    const safeRec = recommendedSettings ? sanitizeAudioSettings(recommendedSettings) : DEFAULT_VOICE_SETTINGS;
+    const filters = {};
 
-    const profile = {
-      presetVersion: '1.0',
-      app: 'AbhiVoiceChanger',
-      characterName: safeCharacter,
-      createdAt: new Date().toISOString(),
-      analysis: {
-        duration: analysis?.duration ?? 0,
-        sampleRate: analysis?.sampleRate ?? 44100,
-        channels: analysis?.numberOfChannels ?? 1,
-        originalFormat: analysis?.originalFormat ?? 'WAV',
-        bitDepth: analysis?.bitDepth ?? '32-bit float (decoded)',
-        averagePitch: analysis?.averagePitchHz ?? null,
-        averagePitchNote: analysis?.averagePitchNote ?? null,
-        pitchRange: analysis?.pitchRange ?? null,
-        rms: analysis?.rmsDb ?? null,
-        peak: analysis?.peakDb ?? null,
-        loudness: analysis?.lufs ?? null,
-        noiseFloor: analysis?.noiseFloorDb ?? null,
-        dynamicRange: analysis?.dynamicRangeDb ?? null,
-        spectralCentroid: analysis?.spectralCentroidHz ?? null,
-        sibilanceIndicator: analysis?.sibilanceIndicator ?? null,
-        silencePercent: analysis?.silencePercent ?? 0,
-        voiceActivityPercent: analysis?.voiceActivityPercent ?? 100,
-        lowEnergyPercent: analysis?.lowEnergyPercent ?? 33,
-        midEnergyPercent: analysis?.midEnergyPercent ?? 52,
-        highEnergyPercent: analysis?.highEnergyPercent ?? 15,
-        clippingDetected: Boolean(analysis?.clippingDetected),
-        clippedSamplesCount: analysis?.clippedSamplesCount ?? 0,
-      },
-      recommendedSettings: safeRec,
-      currentSettings: safeCurrent,
-    };
+    for (const def of FILTER_DEFINITIONS) {
+      const val = safeCurrent[def.key] ?? def.defaultValue;
+      const isNeutral = Math.abs(val - def.defaultValue) < 0.001;
+      const matchesRecommended = recommendedSettings
+        ? Math.abs(val - (safeRec[def.key] ?? def.defaultValue)) < 0.001
+        : false;
 
-    return JSON.stringify(profile, null, 2);
+      let origin = 'default';
+      if (!isNeutral || matchesRecommended) {
+        origin = matchesRecommended && recommendedSettings ? 'recommended' : 'manual';
+      }
+
+      filters[def.key] = {
+        name: def.name,
+        enabled: !isNeutral || def.key === 'highPass' || def.key === 'lowPass' ? val !== def.defaultValue || def.key === 'highPass' : false,
+        value: val,
+        defaultValue: def.defaultValue,
+        min: def.min,
+        max: def.max,
+        step: def.step,
+        unit: def.unit,
+        order: def.order,
+        group: def.group,
+        origin,
+      };
+    }
+
+    return filters;
   }
 
   /**
-   * Validates and imports untrusted JSON preset files.
-   * Enforces strict schema, version compatibility, and parameter bounds clamping.
-   * Completely immune to prototype pollution, script injection, and out-of-range exploits.
-   * 
-   * @param {string} jsonString
-   * @returns {{ success: boolean, data?: Object, error?: string }}
+   * Generates a complete Universal Voice Identity Profile v2.0 JSON string (Section 18D)
    */
-  static validateAndParseProfileJson(jsonString) {
+  static generateUniversalProfileJson({
+    profileName = 'AbhiVoice Profile',
+    analysis = null,
+    recommendedSettings = null,
+    currentSettings = DEFAULT_VOICE_SETTINGS,
+    referenceAudio = null,
+    providerVoiceIds = {},
+    ttsConfig = {},
+    geminiConfigured = false,
+  }) {
+    const safeName = sanitizeFilename(profileName, 'My_Voice_Profile');
+    const safeCurrent = sanitizeAudioSettings(currentSettings);
+    const safeRec = recommendedSettings ? sanitizeAudioSettings(recommendedSettings) : null;
+    const filters = VoiceProfileEngine.buildFilterMap(safeCurrent, safeRec);
+
+    const hasRefAudio = Boolean(referenceAudio?.embedded && referenceAudio?.data);
+    const hasGeminiReplication = Boolean(providerVoiceIds?.geminiVoiceKey || providerVoiceIds?.geminiVoiceId);
+
+    let identityType = 'dsp-and-tts-config';
+    if (hasRefAudio && hasGeminiReplication) identityType = 'reference-audio+gemini-replicated';
+    else if (hasRefAudio) identityType = 'reference-audio';
+    else if (hasGeminiReplication) identityType = 'gemini-replicated-key';
+
+    const limitations = [];
+    if (!hasRefAudio) {
+      limitations.push('No original speech reference clip attached; speaker timbre identity cannot be cloned without uploading a reference sample.');
+    }
+    limitations.push('Google Gemini 3.8 Flash TTS supports speaker replication in Text-to-Speech mode (with speaker consent verification), but does NOT perform raw audio-to-audio Speech-to-Speech voice conversion.');
+    limitations.push('Speech-to-Speech target-speaker conversion requires an optional Speech-to-Speech provider adapter (e.g., ELEVENLABS_API_KEY currently disabled). DSP filters alone only reshape EQ/pitch/dynamics.');
+    limitations.push('Local Kokoro-82M IN-BROWSER engine uses built-in English speaker vectors and cannot clone custom reference audio.');
+
+    const universal = {
+      format: 'AbhiVoiceChanger-Universal-Voice-Profile',
+      profileVersion: '2.0',
+      presetVersion: '1.0', // Compatibility tag
+      app: 'AbhiVoiceChanger',
+      characterName: safeName,
+
+      profile: {
+        name: safeName,
+        createdAt: new Date().toISOString(),
+        schemaSpec: 'AbhiVoiceChanger Universal Voice Identity Schema v2.0',
+      },
+
+      voiceIdentity: {
+        identityType,
+        privacyNotice: hasRefAudio
+          ? 'Contains raw 24kHz WAV Base64 speech reference audio. Keep this file private; Base64 is encoding, not encryption.'
+          : 'No biometric voice audio embedded.',
+        referenceAudio: hasRefAudio
+          ? {
+              embedded: true,
+              encoding: 'base64',
+              format: referenceAudio.format || 'wav',
+              sampleRate: referenceAudio.sampleRate || 24000,
+              channels: referenceAudio.channels || 1,
+              duration: referenceAudio.duration ?? null,
+              originalDuration: referenceAudio.originalDuration ?? null,
+              wasTrimmedToSafeWindow: Boolean(referenceAudio.wasTrimmed),
+              byteLength: referenceAudio.byteLength ?? null,
+              sha256: referenceAudio.sha256 || null,
+              data: referenceAudio.data,
+            }
+          : {
+              embedded: false,
+              encoding: 'base64',
+              format: 'wav',
+              sampleRate: 24000,
+              channels: 1,
+              duration: null,
+              sha256: null,
+              data: null,
+            },
+        providerVoiceIds: {
+          geminiVoiceId: providerVoiceIds?.geminiVoiceId || null,
+          geminiVoiceKey: providerVoiceIds?.geminiVoiceKey || null,
+          geminiVoiceType: providerVoiceIds?.geminiVoiceType || null,
+          geminiConsentVerified: Boolean(providerVoiceIds?.geminiConsentVerified),
+          elevenlabsVoiceId: providerVoiceIds?.elevenlabsVoiceId || null,
+        },
+        speakerDescription: {
+          measuredPitchCharacteristics: {
+            averagePitchHz: analysis?.averagePitchHz ?? null,
+            averagePitchNote: analysis?.averagePitchNote ?? null,
+            pitchRange: analysis?.pitchRange ?? null,
+            pitchVariationStdHz: analysis?.pitchVariationHz ?? null,
+          },
+          estimatedTimbreCharacteristics: {
+            timbreCategory: analysis?.timbreLabel ?? 'Not reliably detected',
+            breathinessEstimate: analysis?.breathinessIndicator ?? 'Not reliably detected',
+            spectralFlatness: analysis?.spectralFlatness ?? null,
+            sibilanceProfile: analysis?.sibilanceIndicator ?? 'Not reliably detected',
+          },
+          formantCharacteristics: {
+            configuredFormantShiftSt: safeCurrent.formant,
+            note: 'Biometric vocal tract formants are preserved in the embedded WAV audio; DSP sliders store additive resonance offsets.',
+          },
+          measuredSpectralCharacteristics: {
+            spectralCentroidHz: analysis?.spectralCentroidHz ?? null,
+            lowEnergyPercent: analysis?.lowEnergyPercent ?? null,
+            midEnergyPercent: analysis?.midEnergyPercent ?? null,
+            highEnergyPercent: analysis?.highEnergyPercent ?? null,
+          },
+        },
+      },
+
+      sourceAnalysis: analysis
+        ? {
+            duration: analysis.duration ?? null,
+            sampleRate: analysis.sampleRate ?? null,
+            channels: analysis.numberOfChannels ?? null,
+            originalFormat: analysis.originalFormat ?? null,
+            bitDepth: analysis.bitDepth ?? null,
+            averagePitch: analysis.averagePitchHz ?? null,
+            averagePitchNote: analysis.averagePitchNote ?? null,
+            pitchRange: analysis.pitchRange ?? null,
+            pitchVariationStdHz: analysis.pitchVariationHz ?? null,
+            rms: analysis.rmsDb ?? null,
+            peak: analysis.peakDb ?? null,
+            loudness: analysis.lufs ?? null,
+            noiseFloor: analysis.noiseFloorDb ?? null,
+            dynamicRange: analysis.dynamicRangeDb ?? null,
+            spectralCentroid: analysis.spectralCentroidHz ?? null,
+            silencePercent: analysis.silencePercent ?? null,
+            voiceActivityPercent: analysis.voiceActivityPercent ?? null,
+            clippingDetected: Boolean(analysis.clippingDetected),
+          }
+        : null,
+
+      recommendedSettings: safeRec || safeCurrent,
+      currentSettings: safeCurrent,
+
+      processingProfile: {
+        processingChainOrder: PROCESSING_CHAIN_ORDER,
+        filters,
+      },
+
+      textToSpeechProfile: {
+        preferredEngine: ttsConfig?.engine || 'gemini',
+        preferredModel: ttsConfig?.model || 'gemini-3.8-flash-tts',
+        preferredVoiceId: ttsConfig?.voiceId || 'Kore',
+        language: ttsConfig?.language || 'auto',
+        accent: ttsConfig?.accent || 'default',
+        defaultEmotion: ttsConfig?.emotion || 'neutral',
+        emotionIntensity: ttsConfig?.intensity || 'moderate',
+        speakingStyle: ttsConfig?.style || 'normal-conversation',
+        speakingRate: Number(ttsConfig?.speed ?? 1.0),
+        pitchPreference: Number(ttsConfig?.pitchPreference ?? 0),
+        pauseSettings: {
+          paragraphPauseMs: Number(ttsConfig?.paragraphPauseMs ?? 550),
+          speakerSwitchPauseMs: Number(ttsConfig?.speakerSwitchPauseMs ?? 650),
+        },
+        pronunciationDictionary: Array.isArray(ttsConfig?.pronunciationDictionary)
+          ? ttsConfig.pronunciationDictionary.slice(0, 100).map((item) => ({
+              word: sanitizeTextScript(String(item.word || ''), 64),
+              pronunciation: sanitizeTextScript(String(item.pronunciation || ''), 128),
+            }))
+          : [],
+        speakers: Array.isArray(ttsConfig?.speakers)
+          ? ttsConfig.speakers.slice(0, 12).map((sp) => ({
+              id: sanitizeFilename(sp.id || 'speaker', 'speaker'),
+              name: sanitizeFilename(sp.name || 'Speaker', 'Speaker'),
+              voiceId: String(sp.voiceId || 'Kore').slice(0, 80),
+            }))
+          : [],
+      },
+
+      speechToSpeechProfile: {
+        targetVoiceIdentity: hasRefAudio ? 'embedded-reference-audio' : 'dsp-chain-only',
+        voiceConversionSupportedLocally: false,
+        processingSettings: 'processingProfile',
+      },
+
+      engineCompatibility: {
+        ttsSupported: true,
+        speechToSpeechDspSupported: true,
+        targetSpeakerConversionSupported: false,
+        activeServerTtsEngine: geminiConfigured ? 'Google Gemini 3.8 Flash TTS' : 'Not configured (Local Kokoro-82M fallback active)',
+        model: ttsConfig?.model || 'gemini-3.8-flash-tts',
+        limitations,
+      },
+    };
+
+    return JSON.stringify(universal, null, 2);
+  }
+
+  /**
+   * Backward-compatible wrapper preserving generateProfileJson callers
+   */
+  static generateProfileJson(opts) {
+    return VoiceProfileEngine.generateUniversalProfileJson({
+      profileName: opts?.characterName || 'Voice',
+      analysis: opts?.analysis,
+      recommendedSettings: opts?.recommendedSettings,
+      currentSettings: opts?.currentSettings,
+      referenceAudio: opts?.referenceAudio || null,
+      providerVoiceIds: opts?.providerVoiceIds || {},
+      ttsConfig: opts?.ttsConfig || {},
+      geminiConfigured: Boolean(opts?.geminiConfigured),
+    });
+  }
+
+  /**
+   * Validates & parses BOTH v1.0 legacy profiles AND v2.0 Universal Voice Identity Profiles asynchronously
+   * (Verifies SHA-256 checksum & Base64 WAV binary signature).
+   */
+  static async validateAndParseUniversalProfileJson(jsonString) {
     if (!jsonString || typeof jsonString !== 'string') {
       return { success: false, error: 'Invalid or unsupported voice profile.' };
     }
 
-    // Limit maximum JSON size (prevent memory DoS)
-    if (jsonString.length > 500 * 1024) {
-      return { success: false, error: 'Invalid or unsupported voice profile.' };
+    if (jsonString.length > MAX_UNIVERSAL_PROFILE_BYTES) {
+      return { success: false, error: 'Voice profile exceeds safe 5 MB limit.' };
     }
 
     let parsed;
     try {
       parsed = JSON.parse(jsonString);
-    } catch (e) {
+    } catch {
       return { success: false, error: 'Invalid or unsupported voice profile.' };
     }
 
@@ -647,31 +847,208 @@ export class VoiceProfileEngine {
       return { success: false, error: 'Invalid or unsupported voice profile.' };
     }
 
-    // Validate preset version
-    const version = parsed.presetVersion;
-    if (!version || typeof version !== 'string' || !version.startsWith('1.')) {
+    // Security check: depth, array/key count, prototype pollution, external URL SSRF
+    if (!checkJsonSafety(parsed)) {
       return { success: false, error: 'Invalid or unsupported voice profile.' };
     }
 
-    // Extract settings (support currentSettings or recommendedSettings or legacy settings)
-    const rawSettings = parsed.currentSettings || parsed.settings || parsed.recommendedSettings;
-    if (!rawSettings || typeof rawSettings !== 'object' || Array.isArray(rawSettings)) {
+    const isV2 = parsed.format === 'AbhiVoiceChanger-Universal-Voice-Profile' ||
+      (typeof parsed.profileVersion === 'string' && parsed.profileVersion.startsWith('2.'));
+    const isV1 = typeof parsed.presetVersion === 'string' && parsed.presetVersion.startsWith('1.');
+
+    if (!isV2 && !isV1) {
       return { success: false, error: 'Invalid or unsupported voice profile.' };
     }
 
-    // Clamps every supported parameter safely
-    const cleanSettings = sanitizeAudioSettings(rawSettings);
+    // Extract Filter Values cleanly from either v2.0 processingProfile.filters OR v1.0 currentSettings
+    let rawFilterValues = {};
+    let restoredFilterCount = 0;
+    const restoredOrigins = {};
 
-    // Extract character name safely
-    const characterName = sanitizeFilename(parsed.characterName || 'Imported Character', 'Voice');
+    if (parsed.processingProfile?.filters && typeof parsed.processingProfile.filters === 'object') {
+      for (const [key, item] of Object.entries(parsed.processingProfile.filters)) {
+        if (item && typeof item === 'object' && typeof item.value === 'number') {
+          rawFilterValues[key] = item.value;
+          restoredOrigins[key] = item.origin || 'manual';
+          restoredFilterCount++;
+        } else if (typeof item === 'number') {
+          rawFilterValues[key] = item;
+          restoredFilterCount++;
+        }
+      }
+    }
+
+    if (restoredFilterCount === 0) {
+      const fallbackRaw = parsed.currentSettings || parsed.settings || parsed.recommendedSettings;
+      if (!fallbackRaw || typeof fallbackRaw !== 'object' || Array.isArray(fallbackRaw)) {
+        return { success: false, error: 'Invalid or unsupported voice profile.' };
+      }
+      rawFilterValues = fallbackRaw;
+      restoredFilterCount = Object.keys(fallbackRaw).length;
+    }
+
+    const cleanSettings = sanitizeAudioSettings(rawFilterValues);
+    const characterName = sanitizeFilename(
+      parsed.profile?.name || parsed.characterName || 'Imported_Profile',
+      'Voice'
+    );
+
+    // Validate & Verify Embedded Reference Audio (v2.0)
+    let referenceAudio = null;
+    let referenceBytes = null;
+    let checksumStatus = 'none';
+
+    const refObj = parsed.voiceIdentity?.referenceAudio;
+    if (refObj && refObj.embedded && typeof refObj.data === 'string' && refObj.data.length > 0) {
+      const audioCheck = validateBase64WavAudio(refObj.data);
+      if (!audioCheck.valid) {
+        return { success: false, error: `Invalid reference audio inside profile: ${audioCheck.error}` };
+      }
+
+      referenceBytes = audioCheck.bytes;
+      const computedHash = await computeSha256Hex(referenceBytes);
+
+      if (refObj.sha256 && typeof refObj.sha256 === 'string') {
+        if (computedHash.toLowerCase() !== refObj.sha256.trim().toLowerCase()) {
+          return {
+            success: false,
+            error: 'Reference audio checksum mismatch. The voice profile may be corrupted or tampered with.',
+          };
+        }
+        checksumStatus = 'verified';
+      } else {
+        checksumStatus = 'unverified-no-hash';
+      }
+
+      referenceAudio = {
+        embedded: true,
+        encoding: 'base64',
+        format: 'wav',
+        sampleRate: Number(refObj.sampleRate) || 24000,
+        channels: Number(refObj.channels) || 1,
+        duration: typeof refObj.duration === 'number' ? refObj.duration : null,
+        originalDuration: typeof refObj.originalDuration === 'number' ? refObj.originalDuration : null,
+        wasTrimmed: Boolean(refObj.wasTrimmedToSafeWindow),
+        byteLength: referenceBytes.byteLength,
+        sha256: computedHash,
+        data: refObj.data,
+      };
+    }
+
+    // Safely validate TTS configuration block (Section 17N + 18F)
+    const rawTts = parsed.textToSpeechProfile || parsed.textToSpeech || null;
+    let restoredTtsConfig = null;
+    if (rawTts && typeof rawTts === 'object' && !Array.isArray(rawTts)) {
+      const clamp = (v, min, max, d) => {
+        const n = parseFloat(v);
+        return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : d;
+      };
+      restoredTtsConfig = {
+        engine: typeof rawTts.preferredEngine === 'string' ? rawTts.preferredEngine.slice(0, 32) : null,
+        model: typeof rawTts.preferredModel === 'string' ? rawTts.preferredModel.slice(0, 64) : null,
+        voiceId: typeof rawTts.preferredVoiceId === 'string' ? rawTts.preferredVoiceId.slice(0, 128) : null,
+        language: typeof rawTts.language === 'string' ? rawTts.language.slice(0, 16) : null,
+        accent: typeof rawTts.accent === 'string' ? rawTts.accent.slice(0, 32) : null,
+        emotion: typeof rawTts.defaultEmotion === 'string' ? rawTts.defaultEmotion.slice(0, 32) : null,
+        intensity: ['subtle', 'moderate', 'strong'].includes(rawTts.emotionIntensity) ? rawTts.emotionIntensity : 'moderate',
+        style: typeof rawTts.speakingStyle === 'string' ? rawTts.speakingStyle.slice(0, 40) : null,
+        speed: clamp(rawTts.speakingRate, 0.75, 1.35, 1.0),
+        pitchPreference: clamp(rawTts.pitchPreference, -12, 12, 0),
+        paragraphPauseMs: clamp(rawTts.pauseSettings?.paragraphPauseMs, 0, 3000, 550),
+        speakerSwitchPauseMs: clamp(rawTts.pauseSettings?.speakerSwitchPauseMs, 0, 3000, 650),
+        pronunciationDictionary: Array.isArray(rawTts.pronunciationDictionary)
+          ? rawTts.pronunciationDictionary
+              .slice(0, 100)
+              .filter((p) => p && typeof p.word === 'string' && typeof p.pronunciation === 'string')
+              .map((p) => ({
+                word: sanitizeTextScript(p.word, 64),
+                pronunciation: sanitizeTextScript(p.pronunciation, 128),
+              }))
+          : [],
+        speakers: Array.isArray(rawTts.speakers)
+          ? rawTts.speakers
+              .slice(0, 12)
+              .filter((s) => s && typeof s.name === 'string')
+              .map((s) => ({
+                id: sanitizeFilename(s.id || s.name, 'speaker'),
+                name: sanitizeFilename(s.name, 'Speaker'),
+                voiceId: typeof s.voiceId === 'string' ? s.voiceId.slice(0, 128) : 'Kore',
+              }))
+          : [],
+      };
+    }
+
+    const providerIds = parsed.voiceIdentity?.providerVoiceIds || {};
+    const safeProviderVoiceIds = {
+      geminiVoiceId: typeof providerIds.geminiVoiceId === 'string' && providerIds.geminiVoiceId.startsWith('voice_')
+        ? providerIds.geminiVoiceId.slice(0, 128)
+        : null,
+      geminiVoiceKey: typeof providerIds.geminiVoiceKey === 'string' && providerIds.geminiVoiceKey.startsWith('voicekey_')
+        ? providerIds.geminiVoiceKey.slice(0, 1024)
+        : null,
+      geminiVoiceType: typeof providerIds.geminiVoiceType === 'string' ? providerIds.geminiVoiceType.slice(0, 32) : null,
+      geminiConsentVerified: Boolean(providerIds.geminiConsentVerified),
+      elevenlabsVoiceId: typeof providerIds.elevenlabsVoiceId === 'string' ? providerIds.elevenlabsVoiceId.slice(0, 128) : null,
+    };
+
+    const rawChain = parsed.processingProfile?.processingChainOrder;
+    const restoredChainOrder = Array.isArray(rawChain)
+      ? rawChain.filter((x) => typeof x === 'string' && PROCESSING_CHAIN_ORDER.includes(x))
+      : PROCESSING_CHAIN_ORDER;
 
     return {
       success: true,
       data: {
-        presetVersion: version,
+        profileVersion: isV2 ? (parsed.profileVersion || '2.0') : (parsed.presetVersion || '1.0'),
+        isUniversalV2: isV2,
         characterName,
         settings: cleanSettings,
-        analysis: parsed.analysis || null,
+        restoredOrigins,
+        restoredFilterCount,
+        restoredChainOrder,
+        analysis: parsed.sourceAnalysis || parsed.analysis || null,
+        recommendedSettings: parsed.recommendedSettings ? sanitizeAudioSettings(parsed.recommendedSettings) : null,
+        referenceAudio,
+        referenceBytes,
+        checksumStatus,
+        providerVoiceIds: safeProviderVoiceIds,
+        ttsConfig: restoredTtsConfig,
+        engineCompatibility: parsed.engineCompatibility || null,
+      },
+    };
+  }
+
+  /**
+   * Synchronous quick check wrapper for simple v1 validation unit tests
+   */
+  static validateAndParseProfileJson(jsonString) {
+    if (!jsonString || typeof jsonString !== 'string' || jsonString.length > MAX_UNIVERSAL_PROFILE_BYTES) {
+      return { success: false, error: 'Invalid or unsupported voice profile.' };
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonString);
+    } catch {
+      return { success: false, error: 'Invalid or unsupported voice profile.' };
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !checkJsonSafety(parsed)) {
+      return { success: false, error: 'Invalid or unsupported voice profile.' };
+    }
+    const version = parsed.profileVersion || parsed.presetVersion;
+    if (!version || typeof version !== 'string' || (!version.startsWith('1.') && !version.startsWith('2.'))) {
+      return { success: false, error: 'Invalid or unsupported voice profile.' };
+    }
+    const rawSettings = parsed.currentSettings || parsed.settings || parsed.recommendedSettings;
+    if (!rawSettings || typeof rawSettings !== 'object' || Array.isArray(rawSettings)) {
+      return { success: false, error: 'Invalid or unsupported voice profile.' };
+    }
+    return {
+      success: true,
+      data: {
+        presetVersion: version,
+        characterName: sanitizeFilename(parsed.characterName || parsed.profile?.name || 'Imported Character', 'Voice'),
+        settings: sanitizeAudioSettings(rawSettings),
+        analysis: parsed.sourceAnalysis || parsed.analysis || null,
         recommendedSettings: parsed.recommendedSettings ? sanitizeAudioSettings(parsed.recommendedSettings) : null,
       },
     };

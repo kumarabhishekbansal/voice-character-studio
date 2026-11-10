@@ -162,6 +162,8 @@ export function sanitizeAudioSettings(rawSettings = {}) {
     bass: clamp(rawSettings.bass, -12, 12, 0),
     presence: clamp(rawSettings.presence, -12, 12, 0),
     treble: clamp(rawSettings.treble, -12, 12, 0),
+    highPass: clamp(rawSettings.highPass, 20, 300, 45),
+    lowPass: clamp(rawSettings.lowPass, 3500, 20000, 20000),
     warmth: clamp(rawSettings.warmth, 0, 100, 15),
     compression: clamp(rawSettings.compression, 0, 100, 20),
     noiseReduction: clamp(rawSettings.noiseReduction, 0, 100, 10),
@@ -170,4 +172,131 @@ export function sanitizeAudioSettings(rawSettings = {}) {
     reverb: clamp(rawSettings.reverb, 0, 30, 4),
     echo: clamp(rawSettings.echo, 0, 30, 0),
   };
+}
+
+/**
+ * Maximum limits for JSON Universal Voice Profiles & TTS scripts
+ */
+export const MAX_UNIVERSAL_PROFILE_BYTES = 5 * 1024 * 1024; // 5 MB max JSON file
+export const MAX_REFERENCE_AUDIO_BYTES = 2.5 * 1024 * 1024; // 2.5 MB raw WAV (~1.7 min mono 24kHz)
+export const MAX_TTS_SCRIPT_CHARS = 15000;
+
+/**
+ * Sanitizes text scripts while preserving newlines, Unicode Hindi/Devanagari characters,
+ * punctuation, and intentional inline pauses/tags.
+ */
+export function sanitizeTextScript(input, maxLength = MAX_TTS_SCRIPT_CHARS) {
+  if (typeof input !== 'string') return '';
+  return input
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Strip dangerous control chars, keep \n \r \t
+    .slice(0, maxLength);
+}
+
+/**
+ * Checks JSON object nesting depth and rejects prototype-pollution keys
+ */
+export function checkJsonSafety(obj, maxDepth = 8, currentDepth = 0) {
+  if (currentDepth > maxDepth) return false;
+  if (obj === null || typeof obj !== 'object') {
+    if (typeof obj === 'string') {
+      const lower = obj.trim().toLowerCase();
+      // Reject embedded external URLs inside JSON string metadata fields (SSRF protection)
+      if (lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('javascript:')) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  if (Array.isArray(obj)) {
+    if (obj.length > 500) return false;
+    for (let i = 0; i < obj.length; i++) {
+      if (!checkJsonSafety(obj[i], maxDepth, currentDepth + 1)) return false;
+    }
+    return true;
+  }
+
+  const keys = Object.keys(obj);
+  if (keys.length > 200) return false;
+  for (const key of keys) {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      return false;
+    }
+    if (!checkJsonSafety(obj[key], maxDepth, currentDepth + 1)) return false;
+  }
+  return true;
+}
+
+/**
+ * Safe Base64 -> Uint8Array decoder (works in browser & Node)
+ */
+export function base64ToUint8Array(base64) {
+  if (typeof base64 !== 'string' || base64.length === 0) {
+    throw new Error('Empty Base64 audio payload');
+  }
+  const cleanB64 = base64.replace(/\s+/g, '');
+  if (!/^[A-Za-z0-9+/=]+$/.test(cleanB64)) {
+    throw new Error('Malformed Base64 characters');
+  }
+  const binStr = atob(cleanB64);
+  const len = binStr.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binStr.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/**
+ * Safe Uint8Array -> Base64 encoder (chunked to avoid call-stack overflow on large buffers)
+ */
+export function uint8ArrayToBase64(bytes) {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const sub = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+    binary += String.fromCharCode.apply(null, sub);
+  }
+  return btoa(binary);
+}
+
+/**
+ * Validates Base64 encoded audio signature (strict RIFF/WAVE check for portable WAV artifacts)
+ */
+export function validateBase64WavAudio(base64Str, maxRawBytes = MAX_REFERENCE_AUDIO_BYTES) {
+  if (typeof base64Str !== 'string' || base64Str.length < 60) {
+    return { valid: false, error: 'Missing or too short Base64 audio.' };
+  }
+  if (base64Str.length > Math.ceil((maxRawBytes * 4) / 3) + 16) {
+    return { valid: false, error: 'Embedded reference audio exceeds safe size limit.' };
+  }
+  try {
+    const bytes = base64ToUint8Array(base64Str);
+    if (bytes.byteLength > maxRawBytes || bytes.byteLength < 44) {
+      return { valid: false, error: 'Invalid reference WAV byte size.' };
+    }
+    if (!validateAudioMagicBytes(bytes.buffer)) {
+      return { valid: false, error: 'Embedded audio failed binary signature check.' };
+    }
+    return { valid: true, bytes };
+  } catch (err) {
+    return { valid: false, error: 'Corrupted Base64 reference audio data.' };
+  }
+}
+
+/**
+ * Computes lowercase hex SHA-256 digest (browser WebCrypto / Node fallback)
+ */
+export async function computeSha256Hex(arrayBufferOrUint8) {
+  const bytes = arrayBufferOrUint8 instanceof Uint8Array
+    ? arrayBufferOrUint8
+    : new Uint8Array(arrayBufferOrUint8);
+
+  const subtle = globalThis.crypto?.subtle;
+  if (subtle) {
+    const hashBuffer = await subtle.digest('SHA-256', bytes);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  throw new Error('WebCrypto SHA-256 unavailable in this environment');
 }

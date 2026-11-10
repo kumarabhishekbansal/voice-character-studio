@@ -24,13 +24,30 @@ A professional web application designed for YouTube video voiceover and characte
    - **Recommended Filter Settings**: Automatically suggests baseline non-aggressive filter parameters (Noise Gate, Vocal Compression, Tone EQ, De-Esser, Volume) tailored to the recording to naturally clean and balance dialogue.
    - **Portable JSON Presets (.json)**: 1-click Download & Import of JSON voice profiles with strict schema validation, type verification, and parameter bounds clamping. Live synchronized with all slider tweaks.
 
-4. **Complete Vocal DSP Pipeline**
+4. **Complete Vocal DSP Pipeline (16 Shared Studio Controls)**
+   - **High-Pass & Low-Pass Filters**: Variable 20–300 Hz sub-bass rumble cut and 3.5–20 kHz high-frequency filter.
    - **Dynamic Noise Reduction Gate**: Silences background room noise and laptop fan hum.
-   - **Character EQ**: 3-Band musical EQ (Bass at 120Hz, Presence at 3.2kHz, Treble at 7.2kHz).
+   - **Character EQ**: 3-Band musical EQ (Bass at 125Hz, Presence at 3.2kHz, Treble at 7.2kHz).
    - **De-Esser**: Suppresses harsh sibilant spikes (6–8 kHz).
    - **Analog Warmth & Saturation**: WaveShaper with even harmonic generation for broadcast presence.
    - **Vocal Compression**: Smooth dynamic leveling with transparent 12ms attack and soft knee.
    - **Algorithmic Studio Reverb & Dark Delay**: Tailored acoustic ambience without external impulse files.
+
+5. **Expressive AI Text-to-Speech Studio (Multi-Engine)**
+   - **Primary Expressive Cloud Adapter (Google Gemini 3.8 Flash TTS)**: 18 emotions (with Subtle/Moderate/Strong intensities), 11 separate speaking styles, inline vocal bursts (`<sigh>`, `<laugh>`, `<gasp>`, `<breath>`), `<short pause>`/`<long pause>`, word emphasis, English/Hindi/Hinglish (130+ languages), multi-speaker dialogue, and **Voice Replication** (requires reference audio + mandatory speaker consent clip).
+   - **Local No-Cost Neural Engine (Kokoro-82M ONNX)**: Runs 100% locally in your browser via WebGPU/WASM with zero API keys or billing (~86 MB ONNX model downloaded once to browser cache). Generates downloadable 24kHz WAV English (US/UK) speech with speed control. *(Note: Local Kokoro v1.0 does not natively support the 18 emotions, Hindi/Hinglish, or custom reference cloning.)*
+   - **Emergency Browser Fallback**: OS `window.speechSynthesis` live preview fallback (cannot export audio or apply DSP).
+   - **Shared Post-Processing**: All generated speech routes through the exact same 16-stage AbhiVoiceChanger DSP pipeline before WAV/MP3 export.
+
+6. **Universal Voice Identity Profile (v2.0 JSON)**
+   - Portable `.json` schema shared seamlessly between **Voice Changer (Speech-to-Speech)** and **Text to Speech** modes (backward-compatible with legacy `v1.0` presets).
+   - Embeds a SHA-256 checksum-verified 24kHz Mono 16-bit WAV speaker reference clip + all 16 filter parameters + processing chain execution order + full TTS configuration.
+   - **Honest Compatibility Disclosure**: Local Speech-to-Speech DSP reshapes pitch/EQ/formants/dynamics only; true target-speaker AI voice conversion requires an optional Speech-to-Speech provider (`ELEVENLABS_API_KEY`, disabled by default until configured). Google Gemini supports Voice Replication in Text-to-Speech mode with explicit consent verification.
+
+7. **Server-Side Environment Variables & Privacy**
+   - `GEMINI_API_KEY`: Optional server-side environment variable configured in **Vercel Project Settings &rarr; Environment Variables** (never exposed in client JS or committed to GitHub). Enables free-tier/project Google Gemini 3.8 TTS & Voice Replication quotas. Requires explicit in-UI consent before scripts or audio leave the browser.
+   - `ELEVENLABS_API_KEY`: Disabled / optional future adapter (not required).
+   - API endpoints under `/api/` include per-IP rate limiting (30 req/min), strict schema/magic-byte verification, and zero logging of user scripts or Base64 audio.
 
 4. **Character Presets (Starting Points)**
    - **Natural Male** (warm & balanced)
